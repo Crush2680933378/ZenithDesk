@@ -35,6 +35,18 @@ const DEFAULT_SETTINGS = {
   modelPath: '',
   backend: 'auto',
   engineArgs: '',
+  // 启动参数（结构化；engineArgs 仍是高级逃生口）
+  ctx: 4096,
+  threads: 0,
+  gpuLayers: 0,
+  batch: 0,
+  flashAttn: 0,
+  spec: 1,
+  draft: 4,
+  kvDtype: 5,
+  prefillChunk: 1024,
+  maxConcurrency: 1,
+  device: 0,
 }
 
 function readSettings() {
@@ -148,6 +160,48 @@ async function waitHealthy(baseUrl, timeoutMs) {
   }
 }
 
+/**
+ * 把设置拼成网关命令行。start 与「命令预览」共用同一份逻辑，
+ * 避免界面显示的和实际执行的不一致。
+ */
+function buildGatewayArgs(s) {
+  let port = '8090'
+  try {
+    port = new URL(s.baseUrl).port || port
+  } catch {
+    /* 用默认端口 */
+  }
+  const args = [port, s.pluginDir || '']
+  if (s.modelPath) args.push('--model', s.modelPath)
+  if (s.backend && s.backend !== 'auto') args.push('--backend', s.backend)
+  const num = (v) => Number.isFinite(Number(v)) ? Number(v) : 0
+  if (num(s.ctx) > 0) args.push('--ctx', String(num(s.ctx)))
+  if (num(s.threads) > 0) args.push('--threads', String(num(s.threads)))
+  if (num(s.gpuLayers) > 0) args.push('--gpu-layers', String(num(s.gpuLayers)))
+  if (num(s.batch) > 0) args.push('--batch', String(num(s.batch)))
+  if (Number(s.flashAttn) > 0) args.push('--flash-attn', '1')
+  if (num(s.spec) > 0) args.push('--spec', String(num(s.spec)))
+  if (num(s.draft) > 0) args.push('--draft', String(num(s.draft)))
+  if (num(s.kvDtype) >= 0) args.push('--kv-dtype', String(num(s.kvDtype)))
+  if (num(s.prefillChunk) > 0) args.push('--prefill-chunk', String(num(s.prefillChunk)))
+  if (num(s.maxConcurrency) > 0) args.push('--max-concurrency', String(num(s.maxConcurrency)))
+  if (num(s.device) >= 0) args.push('--device', String(num(s.device)))
+  if (s.engineArgs) args.push(...String(s.engineArgs).trim().split(/\s+/).filter(Boolean))
+  return { exe: s.gatewayExe || '', args }
+}
+
+ipcMain.handle('gateway:preview', () => {
+  const s = readSettings()
+  const { exe, args } = buildGatewayArgs(s)
+  return {
+    exe,
+    args,
+    cmdline: [exe ? `"${exe}"` : '(未设置网关程序)', ...args.map((a) => (a && a.includes(' ') ? `"${a}"` : a))]
+      .filter(Boolean)
+      .join(' '),
+  }
+})
+
 ipcMain.handle('gateway:start', async (_e, cfg) => {
   const s = { ...readSettings(), ...(cfg || {}) }
   stopGateway()
@@ -159,17 +213,7 @@ ipcMain.handle('gateway:start', async (_e, cfg) => {
     return { ok: false, error: `模型文件不存在：${s.modelPath}` }
   }
 
-  let port = '8090'
-  try {
-    port = new URL(s.baseUrl).port || port
-  } catch {
-    /* 用默认端口 */
-  }
-
-  const args = [port, s.pluginDir || '']
-  if (s.modelPath) args.push('--model', s.modelPath)
-  if (s.backend && s.backend !== 'auto') args.push('--backend', s.backend)
-  if (s.engineArgs) args.push(...String(s.engineArgs).trim().split(/\s+/).filter(Boolean))
+  const { args } = buildGatewayArgs(s)
 
   fs.mkdirSync(path.dirname(gatewayLogFile()), { recursive: true })
   const fd = fs.openSync(gatewayLogFile(), 'w')
@@ -499,6 +543,15 @@ app.whenReady().then(async () => {
     const demoText = demoTextArg ? demoTextArg.slice('--demo-text='.length) : '用三句话介绍一下 Zenith 框架'
     const demoNew = process.argv.includes('--demo-new')
     const demoEngine = process.argv.includes('--demo-engine')
+    const tabArg = process.argv.find((a) => a.startsWith('--demo-tab='))
+    if (tabArg) {
+      const tab = tabArg.slice('--demo-tab='.length)
+      setTimeout(() => {
+        win.webContents
+          .executeJavaScript(`window.__zenithSetTab && window.__zenithSetTab('${tab}')`)
+          .catch(() => {})
+      }, 1500)
+    }
     const js = (s) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const sendLater = (delay) => {
       setTimeout(() => {

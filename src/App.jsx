@@ -286,6 +286,7 @@ export default function App() {
   useEffect(() => {
     window.__zenithDemo = send
     window.__zenithNewSession = createSession
+    window.__zenithSetTab = setTab
     window.__zenithStartEngine = async () => {
       const r = await api.gatewayStart()
       if (r?.ok) {

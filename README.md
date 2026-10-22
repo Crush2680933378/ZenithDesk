@@ -85,6 +85,28 @@ npm start            # = vite build + electron .
 > 也可以在命令行手动起网关：
 > `ai_gateway.exe 8090 <插件目录> --model <权重> --backend ninfer-native --spec 3 --draft 12`
 
+### 启动参数
+
+「引擎」页签里可逐项设置（改完点 **重启引擎** 生效；按钮上方会提示"参数已修改"）。
+不适用的项会按后端灰显，`将执行` 一栏实时显示最终命令行，可复制。
+
+| 参数 | 控件 | 取值 | 说明 |
+|---|---|---|---|
+| 上下文 | 数字 + 2k/4k/8k/16k/32k 预设 | 512 – 262144 | `--ctx`，同时决定 NInfer 的 KV 容量 |
+| 线程数 | 数字 | 0 – 128（0=自动） | `--threads`，**仅 llama.cpp** |
+| GPU 层数 | 数字 | 0 – 999 | `--gpu-layers`，**仅 llama.cpp** |
+| 批大小 | 数字 | 0 或 32 – 4096 | `--batch`，**仅 llama.cpp** |
+| FlashAttn | 开关 | 开/关 | `--flash-attn`，**仅 llama.cpp** |
+| 投机档位 | 下拉 | 无 / MTP / DFlash / **DFlash2** | `--spec`，**仅 NInfer** |
+| 草稿数 | 数字 | 1 – 15 | `--draft`，DFlash2 建议 12 |
+| KV 精度 | 下拉 | BF16 … RK2V4-E8（默认 K8V4） | `--kv-dtype`，**仅 NInfer 进程内** |
+| 预填分块 | 数字 | **128 的倍数** | `--prefill-chunk` |
+| 并发上限 | 数字 | 1 – 8 | `--max-concurrency` |
+| 设备序号 | 数字 | 0 – 7 | `--device`，多卡选卡 |
+| 附加参数 | 文本框 | 任意 | 高级逃生口，原样透传 |
+
+前端会先本地校验（如预填分块不是 128 倍数、并发越界），不合法时红框提示且**不会**启动进程。
+
 ### 启动报 `0xC0000135` / 闪退
 
 网关依赖 MinGW 运行库，需要把下面几个 DLL 放到 `ai_gateway.exe` 同目录：

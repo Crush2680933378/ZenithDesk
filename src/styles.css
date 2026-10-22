@@ -372,3 +372,49 @@ body {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* ---------- 引擎参数控件 ---------- */
+.param { margin-bottom: 8px; }
+.param-disabled { opacity: .45; }
+.param-label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+.param-hint { margin-left: 4px; opacity: .6; cursor: help; }
+.param-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.param-error { margin-top: 2px; font-size: 11px; color: var(--bad); }
+.param .input, .param select { width: 100%; max-width: 100%; }
+.param .input-sm { width: 96px; }
+.chip {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.chip:hover { color: var(--text); }
+.chip-on { color: var(--text); border-color: var(--accent); background: #16202c; }
+.switch { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.switch input { accent-color: var(--accent); }
+.link-btn {
+  padding: 2px 0;
+  margin: 2px 0 8px;
+  font-size: 11.5px;
+  color: var(--accent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.engine-cmd {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  background: #0b0f14;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #9fb0c3;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+.dirty-tip { font-size: 11px; color: var(--warn); }

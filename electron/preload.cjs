@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('zenith', {
   gatewayStart: (cfg) => ipcRenderer.invoke('gateway:start', cfg),
   gatewayStop: () => ipcRenderer.invoke('gateway:stop'),
   gatewayStatus: () => ipcRenderer.invoke('gateway:status'),
+  gatewayPreview: () => ipcRenderer.invoke('gateway:preview'),
 
   // 选文件/目录
   pick: (kind) => ipcRenderer.invoke('dialog:pick', { kind }),
