@@ -4,6 +4,7 @@ import ModelView from './components/ModelView.jsx'
 import SessionList from './components/SessionList.jsx'
 import StatusPanel from './components/StatusPanel.jsx'
 import { parseMetrics } from './metrics.js'
+import { normLang, t } from './i18n.js'
 
 const api = window.zenith
 
@@ -46,6 +47,7 @@ export default function App() {
     sessionsRef.current = sessions
   }, [sessions])
 
+  const lang = normLang(settings?.termLang)
   const baseUrl = settings?.baseUrl || ''
   const connected = !connError && !!status
 
@@ -328,10 +330,14 @@ export default function App() {
             placeholder="http://127.0.0.1:8090"
           />
           <button className="btn" onClick={() => saveSettings({ baseUrl: urlDraft })}>
-            连接
+            {t(lang, '连接', 'Connect')}
           </button>
           <span className={`badge ${connected ? 'badge-ok' : 'badge-bad'}`}>
-            {connected ? '已连接' : connError ? '连接失败' : '未连接'}
+            {connected
+              ? t(lang, '已连接', 'online')
+              : connError
+                ? t(lang, '连接失败', 'offline')
+                : t(lang, '未连接', 'not connected')}
           </span>
         </div>
 
@@ -341,7 +347,7 @@ export default function App() {
             value={settings.model}
             onChange={(e) => saveSettings({ model: e.target.value })}
           >
-            <option value="">默认模型</option>
+            <option value="">{t(lang, '默认模型', 'default model')}</option>
             {models.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.id}
@@ -349,21 +355,21 @@ export default function App() {
             ))}
           </select>
 
-          <label className="ctl" title="思考模式：关 / 默认 / 开">
-            思考
+          <label className="ctl" title="思考模式：关 / 默认 / 开（单次请求覆盖启动默认）">
+            {t(lang, '思考', 'thinking')}
             <select
               className="input input-sm"
               value={settings.thinking}
               onChange={(e) => saveSettings({ thinking: Number(e.target.value) })}
             >
-              <option value={-1}>关</option>
-              <option value={0}>默认</option>
-              <option value={1}>开</option>
+              <option value={-1}>{t(lang, '关', 'off')}</option>
+              <option value={0}>{t(lang, '默认', 'default')}</option>
+              <option value={1}>{t(lang, '开', 'on')}</option>
             </select>
           </label>
 
           <label className="ctl" title="temperature">
-            温度
+            {t(lang, '温度', 'temp')}
             <input
               className="input input-sm"
               type="number"
@@ -396,14 +402,14 @@ export default function App() {
               className={`tab ${tab === 'sessions' ? 'active' : ''}`}
               onClick={() => setTab('sessions')}
             >
-              会话 <span className="tab-count">{sessions.length}</span>
+              {t(lang, '会话', 'sessions')} <span className="tab-count">{sessions.length}</span>
             </button>
 
             <button
               className={`tab ${tab === 'status' ? 'active' : ''}`}
               onClick={() => setTab('status')}
             >
-              状态
+              {t(lang, '状态', 'status')}
             </button>
           </div>
 
@@ -415,6 +421,7 @@ export default function App() {
               onCreate={createSession}
               onDelete={deleteSession}
               onRename={renameSession}
+              lang={lang}
             />
           ) : (
             <>
@@ -424,6 +431,7 @@ export default function App() {
                 metrics={metrics}
                 models={models}
                 connected={connected}
+                lang={lang}
               />
             </>
           )}
@@ -432,17 +440,19 @@ export default function App() {
         <main className="main">
           <div className="view-bar">
             <button className={`vtab ${view === 'chat' ? 'active' : ''}`} onClick={() => setView('chat')}>
-              对话
+              {t(lang, '对话', 'chat')}
             </button>
             <button className={`vtab ${view === 'model' ? 'active' : ''}`} onClick={() => setView('model')}>
-              模型运行
+              {t(lang, '模型运行', 'model runtime')}
             </button>
             {view === 'chat' && (
               <>
                 <span className="chat-title" title={activeTitle}>
                   {activeTitle}
                 </span>
-                <span className="chat-sub">{stable(messages).length} 条消息 · 自动落盘</span>
+                <span className="chat-sub">
+                  {t(lang, `${stable(messages).length} 条消息 · 自动落盘`, `${stable(messages).length} messages · autosaved`)}
+                </span>
               </>
             )}
           </div>
@@ -453,6 +463,7 @@ export default function App() {
               onSend={send}
               onCancel={cancel}
               disabled={!connected}
+              lang={lang}
             />
           ) : (
             <ModelView settings={settings} onSave={saveSettings} onStarted={() => refresh(settings.baseUrl)} />
@@ -465,7 +476,7 @@ export default function App() {
         <span>Chromium {versions.chrome || '?'}</span>
         <span>Node {versions.node || '?'}</span>
         <span className="spacer" />
-        <span>{baseUrl || '未设置网关'}</span>
+        <span>{baseUrl || t(lang, '未设置网关', 'no gateway')}</span>
       </footer>
     </div>
   )

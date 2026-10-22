@@ -125,6 +125,19 @@ libssl-3-x64.dll  libcrypto-3-x64.dll  zlib1.dll
 
 （来自 `C:\msys64\mingw64\bin`；放好后网关可脱离 msys64 独立运行。）
 
+## 术语语言：三态
+
+模型页右上角一个按钮循环切换，选择存在 `settings.termLang`：
+
+| 模式 | 参数标签 | 指标标签 | 顶栏/页签 |
+|---|---|---|---|
+| **中文** | `上下文` + 下方小字 `--ctx` | `解码速度` + 小字 `decode tps` | 中文（悬停有英文） |
+| **EN** | `--ctx`（中文进 tooltip） | `decode tps` | 英文（connect / chat / model runtime） |
+| **中+EN** | `上下文 · --ctx` 单行并排 | `解码速度 · decode tps` | `连接 · Connect` / `对话 · chat` |
+
+下拉选项同步双语：`K8V4（8 位 Key + 4 位 Value，默认）` ↔ `K8V4`；思考 `off / default / on`。
+对话页顶栏（连接、默认模型、思考、温度、tokens）、侧栏页签、输入框按钮都跟随该开关。
+
 ## 模型运行页（独立视图）
 
 主区顶部「对话 / **模型运行**」切换。左侧是启动配置（路径、后端、思考、全部参数、

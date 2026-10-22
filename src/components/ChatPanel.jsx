@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
+import { normLang, t } from '../i18n.js'
 
-function Reasoning({ text }) {
+function Reasoning({ text, lang }) {
   const [open, setOpen] = useState(false)
   if (!text) return null
   return (
-    <details className="reasoning" open={open} onToggle={(e) => setOpen(e.target.open)}>
+    <details className="reasoning" open={open} onToggle={(e) => setOpen(e.target.checked ?? e.target.open)}>
       <summary>
-        思考过程 · {text.length} 字{open ? '' : '（点击展开）'}
+        {t(lang, '思考过程', 'reasoning')} · {text.length} {t(lang, '字', 'chars')}
+        {open ? '' : t(lang, '（点击展开）', ' (click to expand)')}
       </summary>
       <pre>{text}</pre>
     </details>
   )
 }
 
-export default function ChatPanel({ messages, streamingId, onSend, onCancel, disabled }) {
+export default function ChatPanel({ messages, streamingId, onSend, onCancel, disabled, lang: langProp }) {
+  const lang = normLang(langProp)
   const [input, setInput] = useState('')
   const scroller = useRef(null)
 
@@ -39,22 +42,25 @@ export default function ChatPanel({ messages, streamingId, onSend, onCancel, dis
           <div className="empty">
             <h2>天顶，顶点，万物之巅</h2>
             <p>
-              连上 Zenith 网关后即可对话。输入框里 <kbd>Enter</kbd> 发送、
-              <kbd>Shift</kbd>+<kbd>Enter</kbd> 换行。
+              {t(lang, '连上 Zenith 网关后即可对话。', 'Connect a Zenith gateway to start chatting.')}
+              <br />
+              <kbd>Enter</kbd> {t(lang, '发送', 'sends')} · <kbd>Shift</kbd>+<kbd>Enter</kbd>{' '}
+              {t(lang, '换行', 'new line')}
             </p>
           </div>
         )}
 
         {messages.map((m) => (
           <div key={m.id} className={`msg msg-${m.role}`}>
-            <div className="msg-role">{m.role === 'user' ? '我' : 'Zenith'}</div>
+            <div className="msg-role">{m.role === 'user' ? t(lang, '我', 'me') : 'Zenith'}</div>
             <div className="msg-body">
-              {m.role === 'assistant' && <Reasoning text={m.reasoning} />}
+              {m.role === 'assistant' && <Reasoning text={m.reasoning} lang={lang} />}
               <div className="msg-text">{m.content || (m.pending ? '…' : '')}</div>
               {m.error && <div className="msg-error">{m.error}</div>}
               {m.meta && (
                 <div className="msg-meta">
-                  {m.meta.model} · 输入 {m.meta.prompt} / 输出 {m.meta.completion} token
+                  {m.meta.model} · {t(lang, '输入', 'in')} {m.meta.prompt} / {t(lang, '输出', 'out')}{' '}
+                  {m.meta.completion} token
                   {m.meta.finish ? ` · ${m.meta.finish}` : ''}
                   {m.meta.elapsed ? ` · ${(m.meta.elapsed / 1000).toFixed(2)} s` : ''}
                 </div>
@@ -67,7 +73,11 @@ export default function ChatPanel({ messages, streamingId, onSend, onCancel, dis
       <div className="composer">
         <textarea
           value={input}
-          placeholder={disabled ? '未连接网关…' : '发消息给 Zenith（Enter 发送）'}
+          placeholder={
+            disabled
+              ? t(lang, '未连接网关…', 'not connected…')
+              : t(lang, '发消息给 Zenith（Enter 发送）', 'Message Zenith (Enter to send)')
+          }
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -80,11 +90,11 @@ export default function ChatPanel({ messages, streamingId, onSend, onCancel, dis
         <div className="composer-actions">
           {streamingId ? (
             <button className="btn btn-danger" onClick={onCancel}>
-              停止
+              {t(lang, '停止', 'Stop')}
             </button>
           ) : (
             <button className="btn btn-primary" onClick={submit} disabled={disabled}>
-              发送
+              {t(lang, '发送', 'Send')}
             </button>
           )}
         </div>

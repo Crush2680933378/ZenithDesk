@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { parseMetrics, pick } from '../metrics.js'
+import { labelPair, nextLang, normLang } from '../i18n.js'
 
 const api = window.zenith
 
@@ -112,8 +113,7 @@ function Num({ value, onChange, min, max, step = 1, disabled }) {
  */
 function Row({ label, code, hint, error, disabled, children }) {
   const lang = useContext(LANG)
-  const main = lang === 'en' && code ? code : label
-  const sub = lang === 'en' ? '' : code
+  const { main, sub } = labelPair(lang, label, code)
   const title = [hint, code && `英文旗标：${code}`].filter(Boolean).join('｜')
   return (
     <div className={`mrow ${disabled ? 'mrow-off' : ''}`}>
@@ -129,6 +129,7 @@ function Row({ label, code, hint, error, disabled, children }) {
 
 function Stat({ label, code, value, unit, tone }) {
   const lang = useContext(LANG)
+  const { main, sub } = labelPair(lang, label, code)
   return (
     <div className={`stat ${tone || ''}`}>
       <div className="stat-value">
@@ -136,8 +137,8 @@ function Stat({ label, code, value, unit, tone }) {
         {unit && <span className="stat-unit">{unit}</span>}
       </div>
       <div className="stat-label">
-        {lang === 'en' && code ? code : label}
-        {lang !== 'en' && code && <span className="stat-code">{code}</span>}
+        {main}
+        {sub && <span className="stat-code">{sub}</span>}
       </div>
     </div>
   )
@@ -182,7 +183,7 @@ export default function ModelView({ settings, onSave, onStarted }) {
   const [showLog, setShowLog] = useState(false)
   const logRef = useRef(null)
 
-  const lang = settings.termLang === 'en' ? 'en' : 'zh'
+  const lang = normLang(settings.termLang)
   const caps = useMemo(() => capsFor(settings.backend, settings.modelPath), [settings.backend, settings.modelPath])
   const errs = useMemo(() => validate(settings), [settings])
   const hasErr = Object.keys(errs).length > 0
@@ -323,16 +324,20 @@ export default function ModelView({ settings, onSave, onStarted }) {
     <LANG.Provider value={lang}>
     <div className="model-view">
       {/* ================= 左：启动配置 ================= */}
-      <section className="mv-config">
+      <section className={`mv-config ${lang === 'both' ? 'labels-wide' : ''}`}>
         <header className="mv-head">
           <h2>模型启动</h2>
           <div className="mv-head-right">
             <button
               className="lang-toggle"
               title="切换术语语言：中文为主 ↔ 英文旗标为主（悬停任一参数也能看到英文原意）"
-              onClick={() => onSave({ termLang: lang === 'zh' ? 'en' : 'zh' })}
+              onClick={() => onSave({ termLang: nextLang(lang) })}
             >
-              {lang === 'zh' ? '中 → EN' : 'EN → 中'}
+              {lang === 'zh' ? '术语：中文' : lang === 'en' ? '术语：EN' : '术语：中+EN'}
+              <span className="lang-next">
+                {' → '}
+                {nextLang(lang) === 'zh' ? '中文' : nextLang(lang) === 'en' ? 'EN' : '中+EN'}
+              </span>
             </button>
             <span className={`badge ${running || external ? 'badge-ok' : 'badge-bad'}`}>
               {running ? '已托管' : external ? '使用已有网关' : '未运行'}

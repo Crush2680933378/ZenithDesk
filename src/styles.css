@@ -561,3 +561,12 @@ body {
   word-break: break-all;
 }
 .stat-code { margin-left: 6px; font-size: 9.5px; color: #5b6673; font-family: var(--mono); }
+
+/* 并排模式：给"中文 · 英文"更宽的标签列，避免折行 */
+.labels-wide .mrow { grid-template-columns: 104px 1fr; }
+.labels-wide .mrow-main { font-size: 11px; }
+/* 顶栏拥挤时不要折行 */
+.brand, .brand-mark, .ctl, .badge { white-space: nowrap; }
+.topbar { gap: 10px; }
+.ctl { font-size: 11px; }
+.lang-next { opacity: .55; }

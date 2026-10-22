@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { normLang, t } from '../i18n.js'
 
 /** 相对时间：刚刚 / N 分钟前 / N 小时前 / 昨天 / MM-DD */
 function relTime(iso) {
@@ -16,7 +17,8 @@ function relTime(iso) {
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export default function SessionList({ sessions, activeId, onSelect, onCreate, onDelete, onRename }) {
+export default function SessionList({ sessions, activeId, onSelect, onCreate, onDelete, onRename, lang: langProp }) {
+  const lang = normLang(langProp)
   const [editing, setEditing] = useState(null)
   const [draft, setDraft] = useState('')
   const inputRef = useRef(null)
@@ -34,11 +36,11 @@ export default function SessionList({ sessions, activeId, onSelect, onCreate, on
   return (
     <div className="sessions">
       <button className="btn btn-block" onClick={onCreate}>
-        ＋ 新会话
+        ＋ {t(lang, '新会话', 'new session')}
       </button>
 
       <div className="session-items">
-        {sessions.length === 0 && <div className="muted">还没有会话</div>}
+        {sessions.length === 0 && <div className="muted">{t(lang, '还没有会话', 'no sessions yet')}</div>}
         {sessions.map((s) => (
           <div
             key={s.id}
@@ -68,7 +70,7 @@ export default function SessionList({ sessions, activeId, onSelect, onCreate, on
             )}
             <div className="session-meta">
               {relTime(s.updatedAt)}
-              {s.messageCount ? ` · ${Math.ceil(s.messageCount / 2)} 轮` : ''}
+              {s.messageCount ? ` · ${Math.ceil(s.messageCount / 2)} ${t(lang, '轮', 'turns')}` : ''}
             </div>
             <button
               className="session-del"
