@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { parseMetrics, pick } from '../metrics.js'
 
 const api = window.zenith
+
+/// 术语语言：'zh' 中文为主（副标英文旗标）；'en' 英文旗标为主
+const LANG = createContext('zh')
 
 /* ============================ 参数元数据 ============================ */
 
@@ -17,30 +20,34 @@ const CTX_PRESETS = [
   { v: 262144, t: '262k' },
 ]
 
+/// 每项同时给英文代号与中文含义，供中/英模式切换
 const KV_DTYPES = [
-  { v: 0, t: 'BF16（最准/最占显存）' },
-  { v: 1, t: 'INT8' },
-  { v: 2, t: 'FP8' },
-  { v: 3, t: 'RK8V4' },
-  { v: 4, t: 'NVFP4' },
-  { v: 5, t: 'K8V4（默认）' },
-  { v: 6, t: 'RK4V4' },
-  { v: 7, t: 'RK4V4-E8' },
-  { v: 8, t: 'RK2V4-E8（最省）' },
+  { v: 0, code: 'BF16', zh: '半精度浮点，最准但最占显存' },
+  { v: 1, code: 'INT8', zh: '整型 8 位' },
+  { v: 2, code: 'FP8', zh: '8 位浮点' },
+  { v: 3, code: 'RK8V4', zh: '旋转 8 位 Key + 4 位 Value' },
+  { v: 4, code: 'NVFP4', zh: 'NVIDIA 4 位浮点' },
+  { v: 5, code: 'K8V4', zh: '8 位 Key + 4 位 Value，默认' },
+  { v: 6, code: 'RK4V4', zh: '旋转 4 位 Key + 4 位 Value' },
+  { v: 7, code: 'RK4V4-E8', zh: 'RK4V4 的 E8 变体' },
+  { v: 8, code: 'RK2V4-E8', zh: '2 位 Key + 4 位 Value，最省显存' },
 ]
 
 const SPECS = [
-  { v: 0, t: '不启用投机' },
-  { v: 1, t: 'MTP（默认）' },
-  { v: 2, t: 'DFlash' },
-  { v: 3, t: 'DFlash2（最快）' },
+  { v: 0, code: 'none', zh: '不启用投机' },
+  { v: 1, code: 'MTP', zh: '多 token 预测，默认' },
+  { v: 2, code: 'DFlash', zh: 'DFlash 草稿头' },
+  { v: 3, code: 'DFlash2', zh: '实测最快' },
 ]
 
 const THINKING = [
-  { v: 0, t: '后端默认' },
-  { v: -1, t: '关（更快）' },
-  { v: 1, t: '开（更准）' },
+  { v: 0, code: 'default', zh: '后端默认' },
+  { v: -1, code: 'off', zh: '关（更快）' },
+  { v: 1, code: 'on', zh: '开（更准）' },
 ]
+
+/// 中/英模式下拼出选项文字：中文模式「代号（含义）」，英文模式只留代号
+const optText = (o, lang) => (lang === 'en' ? o.code : `${o.code}（${o.zh}）`)
 
 function capsFor(backend, modelPath) {
   const ext = (modelPath || '').toLowerCase().split('.').pop()
@@ -98,11 +105,21 @@ function Num({ value, onChange, min, max, step = 1, disabled }) {
   )
 }
 
-function Row({ label, hint, error, disabled, children, wide }) {
+/**
+ * 参数行：中文标签 + 英文旗标并存。
+ * lang='zh' 时中文为主、旗标为辅；lang='en' 时反过来。
+ * 顶部开关切换，便于对照官方文档里的 flag 名。
+ */
+function Row({ label, code, hint, error, disabled, children }) {
+  const lang = useContext(LANG)
+  const main = lang === 'en' && code ? code : label
+  const sub = lang === 'en' ? '' : code
+  const title = [hint, code && `英文旗标：${code}`].filter(Boolean).join('｜')
   return (
-    <div className={`mrow ${disabled ? 'mrow-off' : ''} ${wide ? 'mrow-wide' : ''}`}>
-      <label className="mrow-label" title={hint || ''}>
-        {label}
+    <div className={`mrow ${disabled ? 'mrow-off' : ''}`}>
+      <label className="mrow-label" title={title}>
+        <span className="mrow-main">{main}</span>
+        {sub && <span className="mrow-sub">{sub}</span>}
       </label>
       <div className="mrow-body">{children}</div>
       {error && <div className="mrow-err">{error}</div>}
@@ -110,14 +127,18 @@ function Row({ label, hint, error, disabled, children, wide }) {
   )
 }
 
-function Stat({ label, value, unit, tone }) {
+function Stat({ label, code, value, unit, tone }) {
+  const lang = useContext(LANG)
   return (
     <div className={`stat ${tone || ''}`}>
       <div className="stat-value">
         {value}
         {unit && <span className="stat-unit">{unit}</span>}
       </div>
-      <div className="stat-label">{label}</div>
+      <div className="stat-label">
+        {lang === 'en' && code ? code : label}
+        {lang !== 'en' && code && <span className="stat-code">{code}</span>}
+      </div>
     </div>
   )
 }
@@ -161,6 +182,7 @@ export default function ModelView({ settings, onSave, onStarted }) {
   const [showLog, setShowLog] = useState(false)
   const logRef = useRef(null)
 
+  const lang = settings.termLang === 'en' ? 'en' : 'zh'
   const caps = useMemo(() => capsFor(settings.backend, settings.modelPath), [settings.backend, settings.modelPath])
   const errs = useMemo(() => validate(settings), [settings])
   const hasErr = Object.keys(errs).length > 0
@@ -298,17 +320,27 @@ export default function ModelView({ settings, onSave, onStarted }) {
   const vramPct = gpu.available && gpu.totalMB ? (gpu.usedMB / gpu.totalMB) * 100 : 0
 
   return (
+    <LANG.Provider value={lang}>
     <div className="model-view">
       {/* ================= 左：启动配置 ================= */}
       <section className="mv-config">
         <header className="mv-head">
           <h2>模型启动</h2>
-          <span className={`badge ${running || external ? 'badge-ok' : 'badge-bad'}`}>
-            {running ? '已托管' : external ? '使用已有网关' : '未运行'}
-          </span>
+          <div className="mv-head-right">
+            <button
+              className="lang-toggle"
+              title="切换术语语言：中文为主 ↔ 英文旗标为主（悬停任一参数也能看到英文原意）"
+              onClick={() => onSave({ termLang: lang === 'zh' ? 'en' : 'zh' })}
+            >
+              {lang === 'zh' ? '中 → EN' : 'EN → 中'}
+            </button>
+            <span className={`badge ${running || external ? 'badge-ok' : 'badge-bad'}`}>
+              {running ? '已托管' : external ? '使用已有网关' : '未运行'}
+            </span>
+          </div>
         </header>
 
-        <Row label="网关">
+        <Row label="网关" code="gateway.exe">
           <input
             className="input path"
             title={settings.gatewayExe || ''}
@@ -318,7 +350,7 @@ export default function ModelView({ settings, onSave, onStarted }) {
           />
           <button className="btn btn-mini" onClick={() => pickFile('exe', 'gatewayExe')}>选择</button>
         </Row>
-        <Row label="插件">
+        <Row label="插件" code="plugin dir">
           <input
             className="input path"
             title={settings.pluginDir || ''}
@@ -328,7 +360,7 @@ export default function ModelView({ settings, onSave, onStarted }) {
           />
           <button className="btn btn-mini" onClick={() => pickFile('dir', 'pluginDir')}>选择</button>
         </Row>
-        <Row label="模型">
+        <Row label="模型" code="model file">
           <input
             className="input path"
             title={settings.modelPath || ''}
@@ -338,7 +370,7 @@ export default function ModelView({ settings, onSave, onStarted }) {
           />
           <button className="btn btn-mini" onClick={() => pickFile('model', 'modelPath')}>选择</button>
         </Row>
-        <Row label="后端">
+        <Row label="后端" code="--backend">
           <select className="input" value={settings.backend} onChange={(e) => onSave({ backend: e.target.value })}>
             <option value="auto">自动（→ {caps.effective}）</option>
             <option value="llama">llama.cpp（GGUF，进程内）</option>
@@ -351,6 +383,7 @@ export default function ModelView({ settings, onSave, onStarted }) {
 
         <Row
           label="思考"
+          code="--thinking"
           hint="启动时的默认思考模式；对话页顶栏的下拉框可按单次请求覆盖。llama.cpp 走 C API 模板，暂不支持该开关"
           disabled={!caps.thinking}
         >
@@ -361,7 +394,7 @@ export default function ModelView({ settings, onSave, onStarted }) {
             onChange={(e) => onSave({ thinkingDefault: Number(e.target.value) })}
           >
             {THINKING.map((t) => (
-              <option key={t.v} value={t.v}>{t.t}</option>
+              <option key={t.v} value={t.v}>{optText(t, lang)}</option>
             ))}
           </select>
         </Row>
@@ -371,7 +404,7 @@ export default function ModelView({ settings, onSave, onStarted }) {
 
         <div className="mv-sub">启动参数</div>
 
-        <Row label="上下文" error={errs.ctx}>
+        <Row label="上下文" code="--ctx" error={errs.ctx}>
           <Num value={settings.ctx} onChange={(v) => onSave({ ctx: v })} min={512} max={262144} step={512} />
           <div className="chips">
             {CTX_PRESETS.map((p) => (
@@ -389,16 +422,16 @@ export default function ModelView({ settings, onSave, onStarted }) {
 
         <div className={`mv-group ${caps.llama ? '' : 'mv-group-off'}`}>
           <div className="mv-group-title">llama.cpp</div>
-          <Row label="线程" hint="CPU 线程数，0=自动" error={errs.threads} disabled={!caps.llama}>
+          <Row label="线程" code="--threads" hint="CPU 线程数，0=自动" error={errs.threads} disabled={!caps.llama}>
             <Num value={settings.threads} onChange={(v) => onSave({ threads: v })} min={0} max={128} disabled={!caps.llama} />
           </Row>
-          <Row label="GPU 层" hint="卸载到 GPU 的层数，0=纯 CPU" error={errs.gpuLayers} disabled={!caps.llama}>
+          <Row label="GPU 层" code="--gpu-layers" hint="卸载到 GPU 的层数，0=纯 CPU" error={errs.gpuLayers} disabled={!caps.llama}>
             <Num value={settings.gpuLayers} onChange={(v) => onSave({ gpuLayers: v })} min={0} max={999} disabled={!caps.llama} />
           </Row>
-          <Row label="批大小" hint="prompt 批处理，0=默认 512" error={errs.batch} disabled={!caps.llama}>
+          <Row label="批大小" code="--batch" hint="prompt 批处理，0=默认 512" error={errs.batch} disabled={!caps.llama}>
             <Num value={settings.batch} onChange={(v) => onSave({ batch: v })} min={0} max={4096} disabled={!caps.llama} />
           </Row>
-          <Row label="FlashAttn" disabled={!caps.llama}>
+          <Row label="FlashAttn" code="--flash-attn" disabled={!caps.llama}>
             <label className="switch">
               <input
                 type="checkbox"
@@ -413,7 +446,7 @@ export default function ModelView({ settings, onSave, onStarted }) {
 
         <div className={`mv-group ${caps.ninfer ? '' : 'mv-group-off'}`}>
           <div className="mv-group-title">NInfer</div>
-          <Row label="投机" error={errs.spec} disabled={!caps.ninfer} hint="投机解码后端">
+          <Row label="投机" code="--spec" error={errs.spec} disabled={!caps.ninfer} hint="投机解码后端">
             <select
               className="input"
               value={settings.spec}
@@ -421,11 +454,11 @@ export default function ModelView({ settings, onSave, onStarted }) {
               onChange={(e) => onSave({ spec: Number(e.target.value) })}
             >
               {SPECS.map((s) => (
-                <option key={s.v} value={s.v}>{s.t}</option>
+                <option key={s.v} value={s.v}>{optText(s, lang)}</option>
               ))}
             </select>
           </Row>
-          <Row label="草稿数" error={errs.draft} disabled={!caps.ninfer || Number(settings.spec) === 0} hint="每轮草稿数，DFlash2 建议 12">
+          <Row label="草稿数" code="--draft" error={errs.draft} disabled={!caps.ninfer || Number(settings.spec) === 0} hint="每轮草稿数，DFlash2 建议 12">
             <Num
               value={settings.draft}
               onChange={(v) => onSave({ draft: v })}
@@ -434,7 +467,7 @@ export default function ModelView({ settings, onSave, onStarted }) {
               disabled={!caps.ninfer || Number(settings.spec) === 0}
             />
           </Row>
-          <Row label="KV 精度" error={errs.kvDtype} disabled={!caps.native} hint="显存↔质量">
+          <Row label="KV 精度" code="--kv-dtype" error={errs.kvDtype} disabled={!caps.native} hint="显存↔质量">
             <select
               className="input"
               value={settings.kvDtype}
@@ -442,11 +475,11 @@ export default function ModelView({ settings, onSave, onStarted }) {
               onChange={(e) => onSave({ kvDtype: Number(e.target.value) })}
             >
               {KV_DTYPES.map((k) => (
-                <option key={k.v} value={k.v}>{k.t}</option>
+                <option key={k.v} value={k.v}>{optText(k, lang)}</option>
               ))}
             </select>
           </Row>
-          <Row label="预填分块" error={errs.prefillChunk} disabled={!caps.native} hint="128 的倍数">
+          <Row label="预填分块" code="--prefill-chunk" error={errs.prefillChunk} disabled={!caps.native} hint="128 的倍数">
             <Num
               value={settings.prefillChunk}
               onChange={(v) => onSave({ prefillChunk: v })}
@@ -456,7 +489,7 @@ export default function ModelView({ settings, onSave, onStarted }) {
               disabled={!caps.native}
             />
           </Row>
-          <Row label="并发" error={errs.maxConcurrency} disabled={!caps.native} hint="同时处理的请求数">
+          <Row label="并发" code="--max-concurrency" error={errs.maxConcurrency} disabled={!caps.native} hint="同时处理的请求数">
             <Num
               value={settings.maxConcurrency}
               onChange={(v) => onSave({ maxConcurrency: v })}
@@ -465,12 +498,12 @@ export default function ModelView({ settings, onSave, onStarted }) {
               disabled={!caps.native}
             />
           </Row>
-          <Row label="设备号" error={errs.device} disabled={!caps.native} hint="多卡时选卡">
+          <Row label="设备号" code="--device" error={errs.device} disabled={!caps.native} hint="多卡时选卡">
             <Num value={settings.device} onChange={(v) => onSave({ device: v })} min={0} max={7} disabled={!caps.native} />
           </Row>
         </div>
 
-        <Row label="附加参数" hint="原样透传，例如 --upstream https://…/v1">
+        <Row label="附加参数" code="--…" hint="原样透传，例如 --upstream https://…/v1">
           <input
             className="input path"
             title={settings.engineArgs || ''}
@@ -513,12 +546,12 @@ export default function ModelView({ settings, onSave, onStarted }) {
         </header>
 
         <div className="stat-grid">
-          <Stat label="解码速度" value={decode ? decode.toFixed(1) : '—'} unit="tok/s" tone={decode > 300 ? 'good' : ''} />
-          <Stat label="预填速度" value={prefill ? Math.round(prefill) : '—'} unit="tok/s" />
-          <Stat label="首 token" value={ttft ? Math.round(ttft) : '—'} unit="ms" />
-          <Stat label="投机接受" value={acceptRate === null ? '—' : acceptRate.toFixed(0)} unit="%" tone={acceptRate > 60 ? 'good' : ''} />
-          <Stat label="请求数" value={eng.requests ?? counters.requests_total ?? 0} />
-          <Stat label="输出 token" value={counters.completion_tokens_total ?? 0} />
+          <Stat label="解码速度" code="decode tps" value={decode ? decode.toFixed(1) : '—'} unit="tok/s" tone={decode > 300 ? 'good' : ''} />
+          <Stat label="预填速度" code="prefill tps" value={prefill ? Math.round(prefill) : '—'} unit="tok/s" />
+          <Stat label="首 token" code="ttft" value={ttft ? Math.round(ttft) : '—'} unit="ms" />
+          <Stat label="投机接受" code="draft accept" value={acceptRate === null ? '—' : acceptRate.toFixed(0)} unit="%" tone={acceptRate > 60 ? 'good' : ''} />
+          <Stat label="请求数" code="requests" value={eng.requests ?? counters.requests_total ?? 0} />
+          <Stat label="输出 token" code="completion tokens" value={counters.completion_tokens_total ?? 0} />
         </div>
 
         <div className="mv-cards">
@@ -565,5 +598,6 @@ export default function ModelView({ settings, onSave, onStarted }) {
         )}
       </section>
     </div>
+    </LANG.Provider>
   )
 }

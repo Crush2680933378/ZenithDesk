@@ -539,3 +539,25 @@ body {
 
 .mv-logbar { display: flex; align-items: center; gap: 10px; }
 .mv-last-line { font-size: 11px; color: var(--muted); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- 中英术语切换 ---------- */
+.mv-head-right { display: flex; align-items: center; gap: 8px; }
+.lang-toggle {
+  padding: 2px 8px;
+  font-size: 10.5px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.lang-toggle:hover { color: var(--text); border-color: var(--accent); }
+.mrow-label { display: flex; flex-direction: column; line-height: 1.25; }
+.mrow-main { font-size: 11.5px; color: var(--muted); }
+.mrow-sub {
+  font-size: 9.5px;
+  color: #5b6673;
+  font-family: var(--mono);
+  word-break: break-all;
+}
+.stat-code { margin-left: 6px; font-size: 9.5px; color: #5b6673; font-family: var(--mono); }

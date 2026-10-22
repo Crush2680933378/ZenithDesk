@@ -49,6 +49,8 @@ const DEFAULT_SETTINGS = {
   prefillChunk: 1024,
   maxConcurrency: 1,
   device: 0,
+  thinkingDefault: 0, // 启动时的默认思考模式：-1 关 / 0 后端默认 / 1 开
+  termLang: 'zh', // 术语语言：zh 中文为主 / en 英文旗标为主
 }
 
 /// 某些编辑器/脚本写出的 JSON 带 UTF-8 BOM，JSON.parse 会直接抛异常 →
