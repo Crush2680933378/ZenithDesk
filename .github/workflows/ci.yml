@@ -38,11 +38,12 @@ jobs:
         run: npm run build
 
       # 视觉回归：Linux 下用 xvfb 起一个虚拟屏，跑 Electron 冒烟截图并作为产物留存
+      # fonts-noto-cjk 必装：runner 默认没有中文字体，界面中文会渲染成豆腐块
       - name: 冒烟截图（xvfb）
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb
+          sudo apt-get install -y xvfb fonts-noto-cjk
           # --no-sandbox：GitHub 的容器里没有 SUID sandbox，Chromium 会直接 SIGTRAP
           xvfb-run --auto-servernum --server-args="-screen 0 1400x1000x24" \
             npx electron . --smoke --disable-gpu --no-sandbox
