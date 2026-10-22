@@ -26,6 +26,14 @@ contextBridge.exposeInMainWorld('zenith', {
   sessionsSave: (payload) => ipcRenderer.invoke('sessions:save', payload),
   sessionsDelete: (id) => ipcRenderer.invoke('sessions:delete', id),
 
+  // 本地引擎（把 Zenith 网关作为子进程拉起）
+  gatewayStart: (cfg) => ipcRenderer.invoke('gateway:start', cfg),
+  gatewayStop: () => ipcRenderer.invoke('gateway:stop'),
+  gatewayStatus: () => ipcRenderer.invoke('gateway:status'),
+
+  // 选文件/目录
+  pick: (kind) => ipcRenderer.invoke('dialog:pick', { kind }),
+
   // 流式对话
   chat: (payload) => ipcRenderer.invoke('chat:start', payload),
   cancel: (id) => ipcRenderer.invoke('chat:cancel', id),

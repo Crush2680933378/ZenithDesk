@@ -9,6 +9,7 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
+const { spawn, execFileSync } = require('node:child_process')
 const { randomUUID } = require('node:crypto')
 
 const isSmoke = process.argv.includes('--smoke')
@@ -28,6 +29,12 @@ const DEFAULT_SETTINGS = {
   maxTokens: 512,
   thinking: 0, // -1 关 / 0 默认 / 1 开
   systemPrompt: '',
+  // 本地引擎（网关）启动参数
+  gatewayExe: '',
+  pluginDir: '',
+  modelPath: '',
+  backend: 'auto',
+  engineArgs: '',
 }
 
 function readSettings() {
@@ -89,6 +96,139 @@ function createWindow() {
     win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   }
 }
+
+// ---------------------------------------------------------------------------
+//  本地引擎（Zenith 网关）进程管理
+//
+//  架构上推理在网关里（插件加载 llama.cpp / NInfer 引擎），桌面端只是客户端。
+//  这个面板负责把网关**当成子进程拉起来**：选模型 → 启动 → 等 /healthz 通 → 自动连上。
+// ---------------------------------------------------------------------------
+/** @type {import('node:child_process').ChildProcess | null} */
+let gatewayProc = null
+const gatewayLogFile = () => path.join(app.getPath('userData'), 'gateway.log')
+
+function gatewayLogTail(max = 4000) {
+  try {
+    const txt = fs.readFileSync(gatewayLogFile(), 'utf8')
+    return txt.length > max ? txt.slice(-max) : txt
+  } catch {
+    return ''
+  }
+}
+
+function stopGateway() {
+  const proc = gatewayProc
+  gatewayProc = null
+  if (!proc) return false
+  try {
+    if (process.platform === 'win32') {
+      execFileSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' })
+    } else {
+      proc.kill('SIGTERM')
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function waitHealthy(baseUrl, timeoutMs) {
+  const started = Date.now()
+  const url = String(baseUrl).replace(/\/+$/, '') + '/healthz'
+  for (;;) {
+    if (Date.now() - started > timeoutMs) return false
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(2000) })
+      if (res.ok) return true
+    } catch {
+      /* 还没起 */
+    }
+    if (gatewayProc === null) return false // 进程已经挂了，不必再等
+    await new Promise((r) => setTimeout(r, 500))
+  }
+}
+
+ipcMain.handle('gateway:start', async (_e, cfg) => {
+  const s = { ...readSettings(), ...(cfg || {}) }
+  stopGateway()
+
+  if (!s.gatewayExe || !fs.existsSync(s.gatewayExe)) {
+    return { ok: false, error: `网关程序不存在：${s.gatewayExe || '(未设置)'}` }
+  }
+  if (s.modelPath && !fs.existsSync(s.modelPath)) {
+    return { ok: false, error: `模型文件不存在：${s.modelPath}` }
+  }
+
+  let port = '8090'
+  try {
+    port = new URL(s.baseUrl).port || port
+  } catch {
+    /* 用默认端口 */
+  }
+
+  const args = [port, s.pluginDir || '']
+  if (s.modelPath) args.push('--model', s.modelPath)
+  if (s.backend && s.backend !== 'auto') args.push('--backend', s.backend)
+  if (s.engineArgs) args.push(...String(s.engineArgs).trim().split(/\s+/).filter(Boolean))
+
+  fs.mkdirSync(path.dirname(gatewayLogFile()), { recursive: true })
+  const fd = fs.openSync(gatewayLogFile(), 'w')
+  try {
+    gatewayProc = spawn(s.gatewayExe, args, {
+      cwd: path.dirname(s.gatewayExe),
+      stdio: ['ignore', fd, fd],
+      windowsHide: true,
+    })
+  } finally {
+    fs.closeSync(fd)
+  }
+  gatewayProc.on('error', (err) => {
+    fs.appendFileSync(gatewayLogFile(), `\n[spawn error] ${err.message}\n`)
+    gatewayProc = null
+  })
+  gatewayProc.on('exit', (code, signal) => {
+    fs.appendFileSync(gatewayLogFile(), `\n[exit] code=${code} signal=${signal}\n`)
+    gatewayProc = null
+  })
+
+  const pid = gatewayProc?.pid ?? 0
+  const ok = await waitHealthy(s.baseUrl, 180000)
+  return ok
+    ? { ok: true, pid, log: gatewayLogTail() }
+    : { ok: false, error: '引擎启动超时（180 s），见下方日志', pid, log: gatewayLogTail() }
+})
+
+ipcMain.handle('gateway:stop', () => ({ ok: stopGateway() }))
+
+ipcMain.handle('gateway:status', () => ({
+  running: gatewayProc !== null,
+  pid: gatewayProc?.pid ?? 0,
+  log: gatewayLogTail(),
+}))
+
+app.on('before-quit', () => stopGateway())
+app.on('will-quit', () => stopGateway())
+
+// 选文件（模型 / 网关程序 / 插件目录）
+ipcMain.handle('dialog:pick', async (_e, payload) => {
+  const { kind } = payload || {}
+  if (kind === 'dir') {
+    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+    return r.canceled ? '' : r.filePaths[0]
+  }
+  const filters =
+    kind === 'model'
+      ? [
+          { name: '模型权重', extensions: ['gguf', 'ninfer'] },
+          { name: '全部文件', extensions: ['*'] },
+        ]
+      : [
+          { name: '可执行文件', extensions: ['exe'] },
+          { name: '全部文件', extensions: ['*'] },
+        ]
+  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters })
+  return r.canceled ? '' : r.filePaths[0]
+})
 
 // ---------------------------------------------------------------------------
 //  设置持久化
@@ -358,16 +498,31 @@ app.whenReady().then(async () => {
     const demoTextArg = process.argv.find((a) => a.startsWith('--demo-text='))
     const demoText = demoTextArg ? demoTextArg.slice('--demo-text='.length) : '用三句话介绍一下 Zenith 框架'
     const demoNew = process.argv.includes('--demo-new')
-    if (demo) {
-      const js = (s) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      setTimeout(() => {
-        if (demoNew) win.webContents.executeJavaScript('window.__zenithNewSession && window.__zenithNewSession()')
-      }, 1500)
+    const demoEngine = process.argv.includes('--demo-engine')
+    const js = (s) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const sendLater = (delay) => {
       setTimeout(() => {
         win.webContents
           .executeJavaScript(`window.__zenithDemo && window.__zenithDemo('${js(demoText)}')`)
           .catch((e) => console.error('[smoke] demo send failed:', e))
-      }, demoNew ? 2600 : 2000)
+      }, delay)
+    }
+    if (demoEngine) {
+      // 先让界面把网关拉起来（真实加载模型），就绪后再发消息
+      setTimeout(() => {
+        win.webContents
+          .executeJavaScript('window.__zenithStartEngine && window.__zenithStartEngine()')
+          .then((r) => {
+            console.log('[smoke] engine ->', JSON.stringify(r))
+            if (r && r.ok && demo) sendLater(1200)
+          })
+          .catch((e) => console.error('[smoke] engine start failed:', e))
+      }, 1200)
+    } else if (demo) {
+      if (demoNew) {
+        setTimeout(() => win.webContents.executeJavaScript('window.__zenithNewSession && window.__zenithNewSession()'), 1500)
+      }
+      sendLater(demoNew ? 2600 : 2000)
     }
     setTimeout(
       async () => {
@@ -385,10 +540,10 @@ app.whenReady().then(async () => {
         }
         app.exit(0)
       },
-      demo ? 6500 : 4500,
+      demoEngine ? 22000 : demo ? 6500 : 4500,
     )
     // 兜底：超时强退，避免无人值守卡死
-    setTimeout(() => app.exit(2), demo ? 15000 : 10000)
+    setTimeout(() => app.exit(2), demoEngine ? 90000 : demo ? 15000 : 10000)
     return
   }
 

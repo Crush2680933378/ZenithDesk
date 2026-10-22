@@ -1,5 +1,6 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatPanel from './components/ChatPanel.jsx'
+import EnginePanel from './components/EnginePanel.jsx'
 import SessionList from './components/SessionList.jsx'
 import StatusPanel from './components/StatusPanel.jsx'
 import { parseMetrics } from './metrics.js'
@@ -285,6 +286,14 @@ export default function App() {
   useEffect(() => {
     window.__zenithDemo = send
     window.__zenithNewSession = createSession
+    window.__zenithStartEngine = async () => {
+      const r = await api.gatewayStart()
+      if (r?.ok) {
+        await new Promise((res) => setTimeout(res, 800))
+        await refresh(settings?.baseUrl)
+      }
+      return r
+    }
     return () => {
       delete window.__zenithDemo
       delete window.__zenithNewSession
@@ -387,6 +396,12 @@ export default function App() {
               会话 <span className="tab-count">{sessions.length}</span>
             </button>
             <button
+              className={`tab ${tab === 'engine' ? 'active' : ''}`}
+              onClick={() => setTab('engine')}
+            >
+              引擎
+            </button>
+            <button
               className={`tab ${tab === 'status' ? 'active' : ''}`}
               onClick={() => setTab('status')}
             >
@@ -394,7 +409,13 @@ export default function App() {
             </button>
           </div>
 
-          {tab === 'sessions' ? (
+          {tab === 'engine' ? (
+            <EnginePanel
+              settings={settings}
+              onSave={saveSettings}
+              onStarted={() => refresh(settings.baseUrl)}
+            />
+          ) : tab === 'sessions' ? (
             <SessionList
               sessions={sessions}
               activeId={activeId}

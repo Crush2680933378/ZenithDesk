@@ -60,6 +60,42 @@ npm start            # = vite build + electron .
 > 本机注意：如果环境里存在 `ELECTRON_RUN_AS_NODE=1`，Electron 会退化成纯 Node，
 > 启动前需要 `$env:ELECTRON_RUN_AS_NODE = $null`。
 
+## 用本地模型推理
+
+推理不在桌面端跑，而在 **Zenith 网关**里（插件加载 llama.cpp / NInfer 引擎）。
+桌面端可以把网关**当子进程拉起来**，不用另开终端：
+
+1. 左栏「引擎」页签
+2. 填三样东西（都有选择按钮）：
+   - **网关程序**：`Zenith\build\m9\bin\ai_gateway.exe`
+   - **插件目录**：GGUF 用 `build\m9\plugins`；NInfer 用 `build\m9\plugins-native`
+   - **模型文件**：`*.gguf` 或 `*.ninfer`
+3. 选后端（`auto` 会按扩展名猜）→ 点「启动本地引擎」
+4. 等状态变绿（加载模型期间日志会滚）→ 右上角「已连接」→ 直接对话
+
+「附加参数」可透传引擎选项，例如 NInfer 的投机解码档位：
+
+```
+--ctx 16384 --spec 3 --draft 12
+```
+
+实测（RTX 5070 Ti / Ternary-Bonsai-2-27B / `--spec 3 --draft 12`）：
+**645 tok/s**、投机接受 89%，94 token 的回答约 1 秒。
+
+> 也可以在命令行手动起网关：
+> `ai_gateway.exe 8090 <插件目录> --model <权重> --backend ninfer-native --spec 3 --draft 12`
+
+### 启动报 `0xC0000135` / 闪退
+
+网关依赖 MinGW 运行库，需要把下面几个 DLL 放到 `ai_gateway.exe` 同目录：
+
+```
+libstdc++-6.dll  libgcc_s_seh-1.dll  libwinpthread-1.dll
+libssl-3-x64.dll  libcrypto-3-x64.dll  zlib1.dll
+```
+
+（来自 `C:\msys64\mingw64\bin`；放好后网关可脱离 msys64 独立运行。）
+
 ## 开发（怎么看到效果）
 
 **一条命令**：起 Vite 开发服务器 + 开 Electron 窗口（自动指向开发服务器）
