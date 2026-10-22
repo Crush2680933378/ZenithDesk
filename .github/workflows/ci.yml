@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Electron 二进制很大（~100 MB），按 lockfile 哈希缓存，命中后省 30–60 s
+      - name: 缓存 Electron 二进制
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/AppData/Local/electron/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建渲染层（Vite）
+        run: npm run build
+
+      # 视觉回归：Linux 下用 xvfb 起一个虚拟屏，跑 Electron 冒烟截图并作为产物留存
+      - name: 冒烟截图（xvfb）
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          xvfb-run --auto-servernum --server-args="-screen 0 1400x1000x24" \
+            npx electron . --smoke --disable-gpu
+
+      - name: 上传截图
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshot
+          path: screenshot.png
+          if-no-files-found: warn
+
+      # 打包链路自检：不发布，只验证 electron-builder 配置能被解析且产物生成
+      - name: 打包自检（不发布）
+        run: npx electron-builder --dir

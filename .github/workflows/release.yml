@@ -1,0 +1,58 @@
+name: Release
+
+# 打 tag 触发（例如：git tag v0.1.0 && git push origin v0.1.0）
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # 创建 Release 并上传产物
+
+jobs:
+  build:
+    name: package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: --win
+            artifact: ZenithDesk-*-win-*.exe
+          - os: ubuntu-latest
+            args: --linux
+            artifact: ZenithDesk-*-linux-*.AppImage
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 缓存 Electron 二进制
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/AppData/Local/electron/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - run: npm ci
+
+      # electron-builder 会先跑 vite build（见 package.json 的 dist 脚本），这里显式先构建
+      - run: npm run build
+
+      - name: 打包并上传到 Release（草稿）
+        run: npx electron-builder ${{ matrix.args }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 留存构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: release/${{ matrix.artifact }}
+          if-no-files-found: warn

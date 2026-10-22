@@ -1,5 +1,10 @@
 ﻿# ZenithDesk
 
+[![CI](https://github.com/Crush2680933378/ZenithDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/Crush2680933378/ZenithDesk/actions/workflows/ci.yml)
+[![Release](https://github.com/Crush2680933378/ZenithDesk/actions/workflows/release.yml/badge.svg)](https://github.com/Crush2680933378/ZenithDesk/actions/workflows/release.yml)
+[![Electron](https://img.shields.io/badge/Electron-45-47848f.svg)]()
+[![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)]()
+
 > Zenith 的桌面控制台：**React 19 + Vite 8 + Electron 45**。
 > 连上 Zenith 网关后即可多轮对话（SSE 流式），左侧实时显示引擎状态、吞吐与累计用量。
 
@@ -88,6 +93,42 @@ ZenithDesk/
 `contextIsolation: true` + `nodeIntegration: false`，渲染进程只能用 `window.zenith`
 暴露的那几个方法。
 
+## 打包（electron-builder）
+
+```powershell
+npm run dist:win     # → release/ZenithDesk-<ver>-win-x64.exe（NSIS 安装包，约 108 MB）
+npm run dist:linux   # → release/ZenithDesk-<ver>-linux-x64.AppImage
+npm run pack         # 只解包不打包（release/win-unpacked/），排查产物问题用
+```
+
+配置在 `package.json` 的 `build` 字段：NSIS 非一键安装、可选安装目录、`release/` 输出、
+图标取 `build/icon.png`（512×512，electron-builder 自动转 ICO）。
+
+> **国内网络**：electron-builder 的 NSIS/winCodeSign 工具链从 `github.com` 拉取。
+> 若被墙，二选一：设代理 `$env:HTTPS_PROXY='http://127.0.0.1:7897'`，
+> 或用镜像 `$env:ELECTRON_BUILDER_BINARIES_MIRROR='https://npmmirror.com/mirrors/electron-builder-binaries/'`。
+> GitHub Actions 的 runner 在境外，无需这两个变量。
+
+### 发版流程
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0     # 触发 .github/workflows/release.yml
+```
+
+`release.yml` 在 Windows 与 Linux 两端分别打包，并上传到 **GitHub Release（草稿）**；
+到 Releases 页面确认产物后点 Publish 即可。产物同时作为 Actions artifact 留存 90 天。
+
+## CI
+
+| job | 内容 |
+|---|---|
+| `build (ubuntu-latest)` | `npm ci` → `vite build` → **xvfb 跑 Electron 冒烟截图**（产物上传）→ `electron-builder --dir` 自检 |
+| `build (windows-latest)` | `npm ci` → `vite build` → `electron-builder --dir` 自检 |
+
+Linux 侧用 `xvfb-run` 起虚拟屏跑 `--smoke`，把界面截图作为 artifact 留存——这样"界面白屏 /
+渲染报错"这类问题能在 PR 阶段被看到，而不必人工开窗。
+
 ## 冒烟 / 截图（无人值守）
 
 ```powershell
@@ -105,5 +146,5 @@ node_modules\electron\dist\electron.exe . --smoke --smoke-demo --demo-new --demo
 - **mock 后端没有引擎 timings**：网关默认 mock 时「预填/解码/TTFT」显示 `—`，
   换成 `ai_llama` / `ai_ninfer` 等真后端才有值。
 - **思考开关**是 Zenith 的扩展字段，标准 OpenAI 客户端不认识，不影响本界面。
-- 未做打包（electron-builder）与自动更新；需要时再加 `electron-builder`。
+- 已配 electron-builder（NSIS + AppImage），但**未做自动更新**（`electron-updater`）。
 - 历史是**明文**存盘的（`sessions.json`），不含加密；多人共用一台机器时注意。

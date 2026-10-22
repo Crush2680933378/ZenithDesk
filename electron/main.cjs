@@ -362,7 +362,10 @@ app.whenReady().then(async () => {
         try {
           const img = await win.capturePage()
           const name = !demo ? 'screenshot.png' : demoNew ? 'screenshot-sessions.png' : 'screenshot-chat.png'
-          const out = path.join(__dirname, '..', name)
+          // 打包后 __dirname 在 app.asar 里（只读），截图必须落到用户数据目录
+          const out = app.isPackaged
+            ? path.join(app.getPath('userData'), name)
+            : path.join(__dirname, '..', name)
           fs.writeFileSync(out, img.toPNG())
           console.log('[smoke] screenshot ->', out)
         } catch (e) {
