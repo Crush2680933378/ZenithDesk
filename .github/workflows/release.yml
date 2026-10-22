@@ -74,13 +74,27 @@ jobs:
           ls -lh dist
           test -n "$(ls dist 2>/dev/null)" || { echo "没有产物，终止"; exit 1; }
 
-      - name: 创建草稿 Release
+      - name: 发布 Release（直接公开，可下载）
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # 不需要安装的 portable 单文件 exe 也一并挂上：下载双击即用
           gh release create "${GITHUB_REF_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "ZenithDesk ${GITHUB_REF_NAME}" \
-            --draft \
             --generate-notes \
+            --notes "## 下载哪个
+
+| 文件 | 用途 |
+|---|---|
+| \`ZenithDesk-*-win-x64-portable.exe\` | **免安装**：下载后双击直接运行（首次启动会自解压到临时目录） |
+| \`ZenithDesk-*-win-x64-setup.exe\` | 安装包：装到本机、创建开始菜单/桌面快捷方式 |
+| \`ZenithDesk-*-linux-x86_64.AppImage\` | Linux：\`chmod +x\` 后直接运行 |
+
+## 首次使用
+
+1. 先启动 Zenith 网关（\`examples/07_ai_gateway\`，默认 \`http://127.0.0.1:8090\`）
+2. 打开 ZenithDesk，地址栏确认网关地址 → 点「连接」→ 显示「已连接」即可对话
+
+> 未启动网关时界面能开，但会显示「连接失败」。" \
             dist/*

@@ -1,4 +1,4 @@
-﻿# ZenithDesk
+# ZenithDesk
 
 [![CI](https://github.com/Crush2680933378/ZenithDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/Crush2680933378/ZenithDesk/actions/workflows/ci.yml)
 [![Release](https://github.com/Crush2680933378/ZenithDesk/actions/workflows/release.yml/badge.svg)](https://github.com/Crush2680933378/ZenithDesk/actions/workflows/release.yml)
@@ -7,6 +7,19 @@
 
 > Zenith 的桌面控制台：**React 19 + Vite 8 + Electron 45**。
 > 连上 Zenith 网关后即可多轮对话（SSE 流式），左侧实时显示引擎状态、吞吐与累计用量。
+
+## ⬇️ 下载（免安装）
+
+到 [Releases](https://github.com/Crush2680933378/ZenithDesk/releases/latest) 直接下载：
+
+| 文件 | 说明 |
+|---|---|
+| **`ZenithDesk-<ver>-win-x64-portable.exe`** | **免安装单文件**：下载双击即运行（每次启动自解压到临时目录，不在系统里留东西） |
+| `ZenithDesk-<ver>-win-x64-setup.exe` | 安装包：装到本机，创建开始菜单 / 桌面快捷方式 |
+| `ZenithDesk-<ver>-linux-x86_64.AppImage` | Linux：`chmod +x` 后直接运行 |
+
+> 首次启动若提示「连接失败」是正常的——需要先起 Zenith 网关
+> （[`examples/07_ai_gateway`](../Zenith/examples/07_ai_gateway)，默认 `http://127.0.0.1:8090`）。
 
 ![多会话与历史](screenshot-sessions.png)
 
@@ -96,7 +109,7 @@ ZenithDesk/
 ## 打包（electron-builder）
 
 ```powershell
-npm run dist:win     # → release/ZenithDesk-<ver>-win-x64.exe（NSIS 安装包，约 108 MB）
+npm run dist:win     # → release/ZenithDesk-<ver>-win-x64-setup.exe（NSIS 安装包）`n#                    → release/ZenithDesk-<ver>-win-x64-portable.exe（免安装单文件）
 npm run dist:linux   # → release/ZenithDesk-<ver>-linux-x64.AppImage
 npm run pack         # 只解包不打包（release/win-unpacked/），排查产物问题用
 ```
