@@ -125,6 +125,24 @@ libssl-3-x64.dll  libcrypto-3-x64.dll  zlib1.dll
 
 （来自 `C:\msys64\mingw64\bin`；放好后网关可脱离 msys64 独立运行。）
 
+## 模型运行页（独立视图）
+
+主区顶部「对话 / **模型运行**」切换。左侧是启动配置（路径、后端、思考、全部参数、
+命令预览），右侧是**实时运行状态**，用来判断模型跑得好不好：
+
+| 指标 | 来源 | 说明 |
+|---|---|---|
+| 解码速度 | `zenith_ai_decode_tps` | tok/s，绿色表示 > 300 |
+| 预填速度 | `zenith_ai_prefill_tps` | prompt 处理吞吐 |
+| 首 token | `zenith_ai_ttft_ms` | 进程内后端也上报（C ABI `first_token_seconds`） |
+| 投机接受 | `draft_accepted / draft_total` | 百分比，> 60% 标绿 |
+| 请求数 / 输出 token | `/zenith/ai/status` + counters | 累计值 |
+| 解码吞吐曲线 | 最近 60 次请求采样 | SVG 折线，标注峰值 |
+| GPU | `nvidia-smi` | 显存占用条、利用率、温度；无 NVIDIA 则自动隐藏 |
+
+**思考开关分两层**：启动参数里的「思考」是**默认值**（`--thinking`），对话页顶栏的下拉框
+按**单次请求**覆盖它。llama.cpp 走 C API 的 chat template，不支持该开关，界面会灰显并说明。
+
 ## 开发（怎么看到效果）
 
 **一条命令**：起 Vite 开发服务器 + 开 Electron 窗口（自动指向开发服务器）

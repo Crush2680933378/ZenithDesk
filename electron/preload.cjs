@@ -33,6 +33,9 @@ contextBridge.exposeInMainWorld('zenith', {
   gatewayPreview: () => ipcRenderer.invoke('gateway:preview'),
   gatewayReclaim: () => ipcRenderer.invoke('gateway:reclaim'),
 
+  // GPU 状态（nvidia-smi；不可用则 available:false）
+  gpu: () => ipcRenderer.invoke('sys:gpu'),
+
   // 选文件/目录
   pick: (kind) => ipcRenderer.invoke('dialog:pick', { kind }),
 

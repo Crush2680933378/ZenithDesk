@@ -14,6 +14,7 @@ const net = require('node:net')
 const { randomUUID } = require('node:crypto')
 
 const isSmoke = process.argv.includes('--smoke')
+const isProbe = process.argv.includes('--probe')
 // 冒烟/无 GPU 环境：关掉硬件加速，避免窗口创建卡住
 if (isSmoke) app.disableHardwareAcceleration()
 /** @type {BrowserWindow | null} */
@@ -86,6 +87,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // 冒烟截图走离屏渲染：窗口被遮挡/锁屏时合成器不出新帧，capturePage 会拍到空图
+      offscreen: isSmoke,
     },
   })
 
@@ -108,6 +111,27 @@ function createWindow() {
     }
   })
 
+  if (isProbe) {
+    win.webContents.on('console-message', (e, level, message) => {
+      console.log('[renderer]', message)
+    })
+    win.webContents.on('render-process-gone', (e, d) => console.log('[renderer gone]', JSON.stringify(d)))
+    setTimeout(async () => {
+      try {
+        const r = await win.webContents.executeJavaScript(
+          `(() => { const root = document.getElementById('root');
+             return JSON.stringify({ bodyLen: document.body.innerHTML.length,
+               rootKids: root ? root.children.length : -1,
+               modelView: !!document.querySelector('.model-view'),
+               mvKids: document.querySelector('.model-view') ? document.querySelector('.model-view').children.length : -1,
+               text: (document.body.innerText || '').slice(0, 200) }); })()`,
+        )
+        console.log('[probe]', r)
+      } catch (err) {
+        console.log('[probe] failed:', String(err))
+      }
+    }, 4000)
+  }
   const devUrl = process.env.VITE_DEV_SERVER_URL
   if (devUrl) {
     win.loadURL(devUrl)
@@ -232,6 +256,9 @@ function buildGatewayArgs(s) {
   if (num(s.prefillChunk) > 0) args.push('--prefill-chunk', String(num(s.prefillChunk)))
   if (num(s.maxConcurrency) > 0) args.push('--max-concurrency', String(num(s.maxConcurrency)))
   if (num(s.device) >= 0) args.push('--device', String(num(s.device)))
+  if (Number(s.thinkingDefault) === -1 || Number(s.thinkingDefault) === 1) {
+    args.push('--thinking', String(Number(s.thinkingDefault)))
+  }
   if (s.engineArgs) args.push(...String(s.engineArgs).trim().split(/\s+/).filter(Boolean))
   return { exe: s.gatewayExe || '', args }
 }
@@ -346,6 +373,33 @@ ipcMain.handle('gateway:status', async () => {
 
 app.on('before-quit', () => stopGateway())
 app.on('will-quit', () => stopGateway())
+
+// ---------------------------------------------------------------------------
+//  GPU 状态：nvidia-smi（没有就返回 available:false，界面自动隐藏）
+// ---------------------------------------------------------------------------
+ipcMain.handle('sys:gpu', async () => {
+  try {
+    const out = execFileSync(
+      'nvidia-smi',
+      ['--query-gpu=name,memory.used,memory.total,utilization.gpu,temperature.gpu',
+       '--format=csv,noheader,nounits'],
+      { encoding: 'utf8', timeout: 3000 },
+    )
+    const first = String(out).trim().split(/\r?\n/)[0]
+    if (!first) return { available: false }
+    const [name, used, total, util, temp] = first.split(',').map((x) => x.trim())
+    return {
+      available: true,
+      name,
+      usedMB: Number(used),
+      totalMB: Number(total),
+      utilPct: Number(util),
+      tempC: Number(temp),
+    }
+  } catch {
+    return { available: false }
+  }
+})
 
 // 选文件（模型 / 网关程序 / 插件目录）
 ipcMain.handle('dialog:pick', async (_e, payload) => {
@@ -625,6 +679,7 @@ app.whenReady().then(async () => {
   createWindow()
 
   if (isSmoke) {
+    win.webContents.setFrameRate(30)
     // --smoke-demo：先驱动一次真实发送（经 renderer 的 __zenithDemo 钩子），
     // 这样截图里能看到流式对话与 token/耗时；纯 --smoke 拍空态。
     const demo = process.argv.includes('--smoke-demo')
@@ -644,6 +699,15 @@ app.whenReady().then(async () => {
           .catch(() => {})
       setTimeout(doScroll, 2600)
       setTimeout(doScroll, 19000) // 截图前再滚一次（前面的重渲染可能重置过）
+    }
+    const viewArg = process.argv.find((a) => a.startsWith('--demo-view='))
+    if (viewArg) {
+      const v = viewArg.slice('--demo-view='.length)
+      setTimeout(() => {
+        win.webContents
+          .executeJavaScript(`window.__zenithSetView && window.__zenithSetView('${v}')`)
+          .catch(() => {})
+      }, 1600)
     }
     const tabArg = process.argv.find((a) => a.startsWith('--demo-tab='))
     if (tabArg) {

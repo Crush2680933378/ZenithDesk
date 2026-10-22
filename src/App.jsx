@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatPanel from './components/ChatPanel.jsx'
-import EnginePanel from './components/EnginePanel.jsx'
+import ModelView from './components/ModelView.jsx'
 import SessionList from './components/SessionList.jsx'
 import StatusPanel from './components/StatusPanel.jsx'
 import { parseMetrics } from './metrics.js'
@@ -35,7 +35,8 @@ export default function App() {
   const [activeId, setActiveId] = useState(null)
   const [messages, setMessages] = useState([])
   const [streamingId, setStreamingId] = useState(null)
-  const [tab, setTab] = useState('sessions') // sessions | status
+  const [tab, setTab] = useState('sessions') // 侧栏：sessions | status
+  const [view, setView] = useState('chat')    // 主区：chat | model
 
   const currentRef = useRef(null)
   const loadedRef = useRef({ id: null, snapshot: '[]' })
@@ -287,6 +288,7 @@ export default function App() {
     window.__zenithDemo = send
     window.__zenithNewSession = createSession
     window.__zenithSetTab = setTab
+    window.__zenithSetView = setView
     window.__zenithStartEngine = async () => {
       const r = await api.gatewayStart()
       if (r?.ok) {
@@ -396,12 +398,7 @@ export default function App() {
             >
               会话 <span className="tab-count">{sessions.length}</span>
             </button>
-            <button
-              className={`tab ${tab === 'engine' ? 'active' : ''}`}
-              onClick={() => setTab('engine')}
-            >
-              引擎
-            </button>
+
             <button
               className={`tab ${tab === 'status' ? 'active' : ''}`}
               onClick={() => setTab('status')}
@@ -410,13 +407,7 @@ export default function App() {
             </button>
           </div>
 
-          {tab === 'engine' ? (
-            <EnginePanel
-              settings={settings}
-              onSave={saveSettings}
-              onStarted={() => refresh(settings.baseUrl)}
-            />
-          ) : tab === 'sessions' ? (
+          {tab === 'sessions' ? (
             <SessionList
               sessions={sessions}
               activeId={activeId}
@@ -439,19 +430,33 @@ export default function App() {
         </aside>
 
         <main className="main">
-          <div className="chat-head">
-            <span className="chat-title" title={activeTitle}>
-              {activeTitle}
-            </span>
-            <span className="chat-sub">{stable(messages).length} 条消息 · 自动落盘</span>
+          <div className="view-bar">
+            <button className={`vtab ${view === 'chat' ? 'active' : ''}`} onClick={() => setView('chat')}>
+              对话
+            </button>
+            <button className={`vtab ${view === 'model' ? 'active' : ''}`} onClick={() => setView('model')}>
+              模型运行
+            </button>
+            {view === 'chat' && (
+              <>
+                <span className="chat-title" title={activeTitle}>
+                  {activeTitle}
+                </span>
+                <span className="chat-sub">{stable(messages).length} 条消息 · 自动落盘</span>
+              </>
+            )}
           </div>
-          <ChatPanel
-            messages={messages}
-            streamingId={streamingId}
-            onSend={send}
-            onCancel={cancel}
-            disabled={!connected}
-          />
+          {view === 'chat' ? (
+            <ChatPanel
+              messages={messages}
+              streamingId={streamingId}
+              onSend={send}
+              onCancel={cancel}
+              disabled={!connected}
+            />
+          ) : (
+            <ModelView settings={settings} onSave={saveSettings} onStarted={() => refresh(settings.baseUrl)} />
+          )}
         </main>
       </div>
 
