@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 //  ZenithDesk 主进程
 //
 //  为什么网络请求都放主进程：
@@ -68,6 +68,18 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // 开发便利：F12 / Ctrl+Shift+I 开关 DevTools（打包后同样可用，便于排查线上问题）
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    const isF12 = input.key === 'F12'
+    const isInspect =
+      (input.control || input.meta) && input.shift && String(input.key).toLowerCase() === 'i'
+    if (isF12 || isInspect) {
+      win.webContents.toggleDevTools()
+      event.preventDefault()
+    }
   })
 
   const devUrl = process.env.VITE_DEV_SERVER_URL

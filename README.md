@@ -60,6 +60,35 @@ npm start            # = vite build + electron .
 > 本机注意：如果环境里存在 `ELECTRON_RUN_AS_NODE=1`，Electron 会退化成纯 Node，
 > 启动前需要 `$env:ELECTRON_RUN_AS_NODE = $null`。
 
+## 开发（怎么看到效果）
+
+**一条命令**：起 Vite 开发服务器 + 开 Electron 窗口（自动指向开发服务器）
+
+```powershell
+npm run dev:app
+```
+
+- 改 `src/**`（界面）→ **即时热更新**，窗口不用重开
+- 改 `electron/**`（主进程）→ 重启 `npm run dev:app`（主进程不支持 HMR）
+- 打开 DevTools：窗口内按 <kbd>F12</kbd> 或 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd>
+- 退出：终端 `Ctrl+C`（脚本会把 Vite 一并结束，不留孤儿进程）
+
+其他入口：
+
+| 命令 | 用途 |
+|---|---|
+| `npm run dev:app` | **开发首选**：Vite + Electron，带热更新 |
+| `npm start` | 先 `vite build` 再开窗口（最接近发布版行为，无 HMR） |
+| `npm run dev` | 只起 Vite；浏览器直接打开会提示"需要 Electron 外壳"（没有 preload 桥） |
+| `npm run smoke` | 构建 + 无头截图到 `screenshot.png`（自动化验收用） |
+| `npm run dist:win` | 打 NSIS 安装包 + portable 单文件 |
+
+前提：网关在跑 —— `..\Zenith\build\m9\bin\ai_gateway.exe 8090`；没起也能开窗口，只是显示「连接失败」。
+
+> 手动 `npx electron .` 启动时注意：本机若有 `ELECTRON_RUN_AS_NODE` 环境变量，
+> Electron 会退化成纯 Node（窗口不出现且不报错），需先 `$env:ELECTRON_RUN_AS_NODE = $null`。
+> `npm run dev:app` 已自动清掉。
+
 ## 目录结构
 
 ```

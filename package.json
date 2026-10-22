@@ -13,6 +13,7 @@
   "homepage": "https://github.com/Crush2680933378/ZenithDesk",
   "scripts": {
     "dev": "vite",
+    "dev:app": "node scripts/dev.mjs",
     "build": "vite build",
     "start": "npm run build && electron .",
     "smoke": "npm run build && electron . --smoke",
