@@ -418,3 +418,14 @@ body {
   user-select: text;
 }
 .dirty-tip { font-size: 11px; color: var(--warn); }
+
+.param-warn {
+  margin: -2px 0 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #ffd479;
+  background: #2a2110;
+  border: 1px solid #4a3a12;
+  border-radius: 6px;
+}

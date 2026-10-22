@@ -23,7 +23,30 @@ const SPECS = [
   { v: 3, t: 'DFlash2（最快）' },
 ]
 
-const CTX_PRESETS = [2048, 4096, 8192, 16384, 32768]
+const CTX_PRESETS = [
+  { v: 2048, t: '2k' },
+  { v: 4096, t: '4k' },
+  { v: 8192, t: '8k' },
+  { v: 16384, t: '16k' },
+  { v: 32768, t: '32k' },
+  { v: 65536, t: '64k' },
+  { v: 131072, t: '128k' },
+  { v: 204800, t: '200k' },
+  { v: 262144, t: '262k' },
+]
+
+/** 超长上下文的风险提示（NInfer 按 ctx 预分配 KV） */
+function ctxHint(ctx, caps) {
+  const n = Number(ctx) || 0
+  if (!caps.ninfer) return ''
+  if (n >= 262144) {
+    return '262k 会在启动时按 ctx 预分配 KV（本机实测约需 7.3 GiB，16 GB 卡 + 8.9 GB 权重装不下），大概率报 runtime reservation 不足。'
+  }
+  if (n >= 131072) {
+    return '超过 128k 后 KV 预分配很吃显存：本机实测 200k 可启动、224k 起就报显存不足。'
+  }
+  return ''
+}
 
 /** 返回该后端下哪些参数组可用 */
 function capsFor(backend, modelPath) {
@@ -238,17 +261,22 @@ export default function EnginePanel({ settings, onSave, onStarted }) {
       <Field label="上下文" error={errs.ctx} hint="最大上下文长度，同时决定 NInfer 的 KV 容量">
         <div className="param-row">
           <Num value={settings.ctx} onChange={(v) => onSave({ ctx: v })} min={512} max={262144} step={512} />
-          {CTX_PRESETS.map((c) => (
+          {CTX_PRESETS.map((p) => (
             <button
-              key={c}
-              className={`chip ${Number(settings.ctx) === c ? 'chip-on' : ''}`}
-              onClick={() => onSave({ ctx: c })}
+              key={p.v}
+              className={`chip ${Number(settings.ctx) === p.v ? 'chip-on' : ''}`}
+              title={`${p.v} tokens${p.t === '262k' ? '（= 256 Ki，本机实测超出显存）' : ''}`}
+              onClick={() => onSave({ ctx: p.v })}
             >
-              {c >= 1024 ? `${c / 1024}k` : c}
+              {p.t}
             </button>
           ))}
         </div>
       </Field>
+
+      {ctxHint(settings.ctx, caps) && (
+        <div className="param-warn">⚠ {ctxHint(settings.ctx, caps)}</div>
+      )}
 
       <Field
         label="线程数"

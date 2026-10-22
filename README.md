@@ -92,7 +92,7 @@ npm start            # = vite build + electron .
 
 | 参数 | 控件 | 取值 | 说明 |
 |---|---|---|---|
-| 上下文 | 数字 + 2k/4k/8k/16k/32k 预设 | 512 – 262144 | `--ctx`，同时决定 NInfer 的 KV 容量 |
+| 上下文 | 数字 + 2k/4k/8k/16k/32k/64k/128k/200k/**262k** 预设 | 512 – 262144 | `--ctx`，同时决定 NInfer 的 KV 容量 |
 | 线程数 | 数字 | 0 – 128（0=自动） | `--threads`，**仅 llama.cpp** |
 | GPU 层数 | 数字 | 0 – 999 | `--gpu-layers`，**仅 llama.cpp** |
 | 批大小 | 数字 | 0 或 32 – 4096 | `--batch`，**仅 llama.cpp** |
@@ -106,6 +106,13 @@ npm start            # = vite build + electron .
 | 附加参数 | 文本框 | 任意 | 高级逃生口，原样透传 |
 
 前端会先本地校验（如预填分块不是 128 倍数、并发越界），不合法时红框提示且**不会**启动进程。
+
+> **超长上下文的现实约束**（实测：RTX 5070 Ti 16 GB + Ternary-Bonsai-2-27B 8.9 GB 权重）：
+> NInfer 会**按 ctx 预分配 KV**，同一张卡上
+> `128k / 192k / 200k` 可以启动，`224k` 起报显存不足，
+> `262k` 需要约 **7.3 GiB** KV（可用仅 6.5 GiB）——按钮保留，但点了会在启动时报
+> `runtime reservation requires … bytes, but only … are available`。
+> 换更大显存的卡或更小的权重就能用上。
 
 ### 启动报 `0xC0000135` / 闪退
 
