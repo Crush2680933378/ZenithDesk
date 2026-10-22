@@ -696,7 +696,7 @@ app.whenReady().then(async () => {
       const doScroll = () =>
         win.webContents
           .executeJavaScript(
-            `document.querySelector('.sidebar') && (document.querySelector('.sidebar').scrollTop = ${px})`,
+            `(() => { const s = document.querySelector('.sidebar'); if (s) s.scrollTop = ${px}; const m = document.querySelector('.messages'); if (m) m.scrollTop = m.scrollHeight; return 'ok'; })()`,
           )
           .catch(() => {})
       setTimeout(doScroll, 2600)
