@@ -10,6 +10,7 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const { spawn, execFileSync } = require('node:child_process')
+const net = require('node:net')
 const { randomUUID } = require('node:crypto')
 
 const isSmoke = process.argv.includes('--smoke')
@@ -150,6 +151,45 @@ function stopGateway() {
   }
 }
 
+/** 探测端口：true = 有人监听 */
+function portOpen(host, port, timeoutMs = 800) {
+  return new Promise((resolve) => {
+    const sock = net.createConnection({ host, port })
+    const done = (v) => {
+      sock.removeAllListeners()
+      sock.destroy()
+      resolve(v)
+    }
+    sock.setTimeout(timeoutMs)
+    sock.once('connect', () => done(true))
+    sock.once('timeout', () => done(false))
+    sock.once('error', () => done(false))
+  })
+}
+
+/** 该地址上是不是一个活的 Zenith 网关 */
+async function isZenithGateway(baseUrl) {
+  try {
+    const res = await fetch(String(baseUrl).replace(/\/+$/, '') + '/healthz', {
+      signal: AbortSignal.timeout(1500),
+    })
+    if (!res.ok) return false
+    const j = await res.json().catch(() => null)
+    return !!j && j.status === 'ok'
+  } catch {
+    return false
+  }
+}
+
+function targetHostPort(baseUrl) {
+  try {
+    const u = new URL(baseUrl)
+    return { host: u.hostname || '127.0.0.1', port: Number(u.port || 8090) }
+  } catch {
+    return { host: '127.0.0.1', port: 8090 }
+  }
+}
+
 async function waitHealthy(baseUrl, timeoutMs) {
   const started = Date.now()
   const url = String(baseUrl).replace(/\/+$/, '') + '/healthz'
@@ -219,6 +259,26 @@ ipcMain.handle('gateway:start', async (_e, cfg) => {
     return { ok: false, error: `模型文件不存在：${s.modelPath}` }
   }
 
+  // 端口被占（多半是上次没退干净的引擎）：能复用就复用，不能就给出可操作错误
+  const { host, port } = targetHostPort(s.baseUrl)
+  if (await portOpen(host, port)) {
+    if (await isZenithGateway(s.baseUrl)) {
+      return {
+        ok: true,
+        reused: true,
+        pid: 0,
+        log: gatewayLogTail(),
+        note: `${port} 上已有 Zenith 网关在跑，直接复用（未重复启动）`,
+      }
+    }
+    return {
+      ok: false,
+      code: 'PORT_BUSY',
+      error: `端口 ${port} 被其它程序占用（不是可用的 Zenith 网关）。可点「清理占用」结束残留的 ai_gateway.exe。`,
+      log: gatewayLogTail(),
+    }
+  }
+
   const { args } = buildGatewayArgs(s)
 
   fs.mkdirSync(path.dirname(gatewayLogFile()), { recursive: true })
@@ -250,11 +310,39 @@ ipcMain.handle('gateway:start', async (_e, cfg) => {
 
 ipcMain.handle('gateway:stop', () => ({ ok: stopGateway() }))
 
-ipcMain.handle('gateway:status', () => ({
-  running: gatewayProc !== null,
-  pid: gatewayProc?.pid ?? 0,
-  log: gatewayLogTail(),
-}))
+/// 清理残留引擎：杀掉所有 ai_gateway.exe（含非本进程启动的）
+ipcMain.handle('gateway:reclaim', async () => {
+  const before = gatewayProc ? 1 : 0
+  stopGateway()
+  let killed = before
+  try {
+    if (process.platform === 'win32') {
+      execFileSync('taskkill', ['/IM', 'ai_gateway.exe', '/T', '/F'], { stdio: 'ignore' })
+    } else {
+      execFileSync('pkill', ['-f', 'ai_gateway'], { stdio: 'ignore' })
+    }
+  } catch {
+    /* 没有残留进程时 taskkill 会返回非零，忽略 */
+  }
+  await new Promise((r) => setTimeout(r, 600))
+  const { host, port } = targetHostPort(readSettings().baseUrl)
+  const stillBusy = await portOpen(host, port)
+  return { ok: !stillBusy, stillBusy, port }
+})
+
+ipcMain.handle('gateway:status', async () => {
+  const s = readSettings()
+  const { host, port } = targetHostPort(s.baseUrl)
+  const busy = await portOpen(host, port, 400)
+  return {
+    running: gatewayProc !== null,
+    pid: gatewayProc?.pid ?? 0,
+    external: gatewayProc === null && busy && (await isZenithGateway(s.baseUrl)),
+    portBusy: busy,
+    port,
+    log: gatewayLogTail(),
+  }
+})
 
 app.on('before-quit', () => stopGateway())
 app.on('will-quit', () => stopGateway())

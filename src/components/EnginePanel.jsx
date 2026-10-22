@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 const api = window.zenith
 
@@ -117,7 +117,15 @@ export default function EnginePanel({ settings, onSave, onStarted }) {
   const [running, setRunning] = useState(false)
   const [preview, setPreview] = useState({ cmdline: '' })
   const [startedArgs, setStartedArgs] = useState('') // 上次启动时的命令行，用来判断"改了没应用"
+  const [portBusy, setPortBusy] = useState(false)    // 端口被别的程序占着
+  const [external, setExternal] = useState(false)    // 已有别的 Zenith 网关在跑（我们没托管）
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const actionsRef = useRef(null)
+
+  // 端口冲突时把操作区滚进视野——否则按钮在面板下方，用户看不到「清理占用」
+  useEffect(() => {
+    if (portBusy || msg) actionsRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [portBusy, msg])
 
   const caps = useMemo(() => capsFor(settings.backend, settings.modelPath), [settings.backend, settings.modelPath])
   const errs = useMemo(() => validate(settings), [settings])
@@ -133,6 +141,8 @@ export default function EnginePanel({ settings, onSave, onStarted }) {
     api.gatewayStatus().then((s) => {
       setRunning(s.running)
       setLog(s.log || '')
+      setExternal(!!s.external)
+      setPortBusy(!!s.portBusy && !s.running)
     })
     refreshPreview()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -167,7 +177,13 @@ export default function EnginePanel({ settings, onSave, onStarted }) {
       const r = await api.gatewayStart()
       setRunning(!!r.ok)
       setLog(r.log || '')
-      setMsg(r.ok ? `已启动（pid ${r.pid}）` : r.error || '启动失败')
+      setPortBusy(r.code === 'PORT_BUSY')
+      if (r.ok && r.reused) {
+        setExternal(true)
+        setMsg(r.note || '已复用现有网关')
+      } else {
+        setMsg(r.ok ? `已启动（pid ${r.pid}）` : r.error || '启动失败')
+      }
       if (r.ok) {
         setStartedArgs(before.cmdline)
         onStarted?.()
@@ -175,6 +191,21 @@ export default function EnginePanel({ settings, onSave, onStarted }) {
     } catch (e) {
       setMsg('启动异常：' + String(e?.message || e))
     } finally {
+      setBusy(false)
+    }
+  }
+
+  const reclaim = async () => {
+    setBusy(true)
+    setMsg('正在清理残留的 ai_gateway.exe…')
+    try {
+      const r = await api.gatewayReclaim()
+      setPortBusy(!!r.stillBusy)
+      setMsg(r.ok ? `已清理，端口 ${r.port} 已释放，正在重启…` : `端口 ${r.port} 仍被占用`)
+      setBusy(false)
+      if (r.ok) await start()
+    } catch (e) {
+      setMsg('清理失败：' + String(e?.message || e))
       setBusy(false)
     }
   }
@@ -416,16 +447,26 @@ export default function EnginePanel({ settings, onSave, onStarted }) {
       <div className="panel-sub">将执行</div>
       <pre className="engine-cmd">{preview.cmdline || '(未设置网关程序)'}</pre>
 
-      <div className="engine-actions">
+      <div className="engine-actions" ref={actionsRef}>
         <button className="btn btn-primary" disabled={busy || !settings.gatewayExe || hasErr} onClick={start}>
           {busy ? '启动中…' : running ? '重启引擎' : '启动本地引擎'}
         </button>
         <button className="btn" disabled={!running} onClick={stop}>
           停止
         </button>
+        {portBusy && (
+          <button className="btn btn-danger" disabled={busy} onClick={reclaim}>
+            清理占用并重启
+          </button>
+        )}
         {dirty && <span className="dirty-tip">参数已修改，点「重启引擎」生效</span>}
         <span className="muted">{msg}</span>
       </div>
+      {external && !dirty && (
+        <div className="param-warn" style={{ marginTop: 6 }}>
+          当前连的是**已在运行**的网关（不是本界面托管的进程）。要换参数得先停掉它，否则改的参数不会生效。
+        </div>
+      )}
 
       {log && (
         <>
