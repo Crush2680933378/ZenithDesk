@@ -31,7 +31,7 @@ const CTX_PRESETS = [
   { v: 32768, t: '32k' },
   { v: 65536, t: '64k' },
   { v: 131072, t: '128k' },
-  { v: 204800, t: '200k' },
+  { v: 196608, t: '192k' },
   { v: 262144, t: '262k' },
 ]
 
@@ -43,7 +43,7 @@ function ctxHint(ctx, caps) {
     return '262k 会在启动时按 ctx 预分配 KV（本机实测约需 7.3 GiB，16 GB 卡 + 8.9 GB 权重装不下），大概率报 runtime reservation 不足。'
   }
   if (n >= 131072) {
-    return '超过 128k 后 KV 预分配很吃显存：本机实测 200k 可启动、224k 起就报显存不足。'
+    return '超过 128k 后 KV 预分配很吃显存：本机实测 192k 可启动（余量约 0.5 GiB），224k 起报显存不足。'
   }
   return ''
 }
