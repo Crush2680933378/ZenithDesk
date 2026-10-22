@@ -49,19 +49,25 @@ const DEFAULT_SETTINGS = {
   device: 0,
 }
 
-function readSettings() {
+/// 某些编辑器/脚本写出的 JSON 带 UTF-8 BOM，JSON.parse 会直接抛异常 →
+/// 读之前先剥掉，否则设置会被"静默重置成默认值"
+function readJsonFile(file, fallback) {
   try {
-    const raw = fs.readFileSync(settingsFile(), 'utf8')
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) }
+    const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')
+    return JSON.parse(raw)
   } catch {
-    return { ...DEFAULT_SETTINGS }
+    return fallback
   }
+}
+
+function readSettings() {
+  return { ...DEFAULT_SETTINGS, ...readJsonFile(settingsFile(), {}) }
 }
 
 function writeSettings(next) {
   const merged = { ...DEFAULT_SETTINGS, ...next }
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true })
-  fs.writeFileSync(settingsFile(), JSON.stringify(merged, null, 2), 'utf8')
+  fs.writeFileSync(settingsFile(), JSON.stringify(merged, null, 2), { encoding: 'utf8' })
   return merged
 }
 
@@ -294,12 +300,8 @@ let store = null
 
 function loadStore() {
   if (store) return store
-  try {
-    const raw = JSON.parse(fs.readFileSync(sessionsFile(), 'utf8'))
-    if (raw && Array.isArray(raw.sessions)) store = raw
-  } catch {
-    /* 首次运行或文件损坏：下面重建空库 */
-  }
+  const raw = readJsonFile(sessionsFile(), null)
+  if (raw && Array.isArray(raw.sessions)) store = raw
   if (!store) store = { version: 1, activeId: null, sessions: [] }
   return store
 }
@@ -543,6 +545,18 @@ app.whenReady().then(async () => {
     const demoText = demoTextArg ? demoTextArg.slice('--demo-text='.length) : '用三句话介绍一下 Zenith 框架'
     const demoNew = process.argv.includes('--demo-new')
     const demoEngine = process.argv.includes('--demo-engine')
+    const scrollArg = process.argv.find((a) => a.startsWith('--demo-scroll='))
+    if (scrollArg) {
+      const px = Number(scrollArg.slice('--demo-scroll='.length)) || 0
+      const doScroll = () =>
+        win.webContents
+          .executeJavaScript(
+            `document.querySelector('.sidebar') && (document.querySelector('.sidebar').scrollTop = ${px})`,
+          )
+          .catch(() => {})
+      setTimeout(doScroll, 2600)
+      setTimeout(doScroll, 19000) // 截图前再滚一次（前面的重渲染可能重置过）
+    }
     const tabArg = process.argv.find((a) => a.startsWith('--demo-tab='))
     if (tabArg) {
       const tab = tabArg.slice('--demo-tab='.length)
