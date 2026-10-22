@@ -1,0 +1,24 @@
+{
+  "name": "zenithdesk",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Zenith 桌面控制台：聊天 / 模型 / 引擎状态（React + Electron）",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "npm run build && electron .",
+    "smoke": "npm run build && electron . --smoke",
+    "preview": "electron ."
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^45.0.0",
+    "vite": "^8.3.5"
+  }
+}
