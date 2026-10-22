@@ -379,12 +379,19 @@ export default function ModelView({ settings, onSave, onStarted }) {
           <select className="input" value={settings.backend} onChange={(e) => onSave({ backend: e.target.value })}>
             <option value="auto">自动（→ {caps.effective}）</option>
             <option value="llama">llama.cpp（GGUF，进程内）</option>
-            <option value="ninfer-native">NInfer C ABI（GPU，进程内）</option>
-            <option value="ninfer">NInfer 子进程</option>
+            <option value="ninfer-native">NInfer C ABI（进程内，自研 C ABI）</option>
+            <option value="ninfer">NInfer 子进程（需 zenith_ai_ninfer.dll）</option>
             <option value="openai">外部 OpenAI 上游</option>
             <option value="mock">mock（联调）</option>
           </select>
         </Row>
+
+        {settings.backend === 'ninfer' && /plugins-native/i.test(settings.pluginDir || '') && (
+          <div className="param-warn" style={{ marginBottom: 8 }}>
+            ⚠ 当前插件目录是 <code>plugins-native</code>（只有进程内原生插件）。
+            「NInfer 子进程」需要 <code>zenith_ai_ninfer.dll</code>；不改也能启动——网关会自动回退到进程内形态。
+          </div>
+        )}
 
         <Row
           label="思考"

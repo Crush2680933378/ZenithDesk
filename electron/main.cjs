@@ -28,7 +28,7 @@ const DEFAULT_SETTINGS = {
   baseUrl: 'http://127.0.0.1:8090',
   model: '',
   temperature: 0.7,
-  maxTokens: 512,
+  maxTokens: 1024,
   thinking: 0, // -1 关 / 0 默认 / 1 开
   systemPrompt: '',
   // 本地引擎（网关）启动参数

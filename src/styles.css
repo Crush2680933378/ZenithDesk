@@ -570,3 +570,15 @@ body {
 .topbar { gap: 10px; }
 .ctl { font-size: 11px; }
 .lang-next { opacity: .55; }
+
+/* 正文为空时的原因提示 */
+.msg-warn {
+  margin-top: 6px;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #ffd479;
+  background: #2a2110;
+  border: 1px solid #4a3a12;
+  border-radius: 6px;
+}
