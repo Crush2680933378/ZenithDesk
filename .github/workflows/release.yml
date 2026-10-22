@@ -10,7 +10,10 @@ permissions:
   contents: write # 创建 Release 并上传产物
 
 jobs:
-  build:
+  # 打包阶段：两端并行，只产出 artifact，**不**创建 Release。
+  # 早先让 electron-builder 直接 --publish 会踩竞态：两个平台并发各建一个草稿，
+  # 同一个 tag 挂出两个 Release。所以发布统一交给下面的 release job。
+  package:
     name: package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -19,10 +22,8 @@ jobs:
         include:
           - os: windows-latest
             args: --win
-            artifact: ZenithDesk-*-win-*.exe
           - os: ubuntu-latest
             args: --linux
-            artifact: ZenithDesk-*-linux-*.AppImage
 
     steps:
       - uses: actions/checkout@v4
@@ -42,17 +43,44 @@ jobs:
 
       - run: npm ci
 
-      # electron-builder 会先跑 vite build（见 package.json 的 dist 脚本），这里显式先构建
       - run: npm run build
 
-      - name: 打包并上传到 Release（草稿）
-        run: npx electron-builder ${{ matrix.args }} --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 打包（不发布）
+        run: npx electron-builder ${{ matrix.args }} --publish never
 
-      - name: 留存构建产物
+      - name: 留存产物
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.os }}
-          path: release/${{ matrix.artifact }}
-          if-no-files-found: warn
+          name: dist-${{ runner.os }}
+          path: |
+            release/*.exe
+            release/*.AppImage
+          if-no-files-found: error
+
+  # 发布阶段：等两端产物齐全，一次性创建草稿 Release 并附加全部文件
+  release:
+    name: publish draft release
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取回两端产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 清点产物
+        run: |
+          ls -lh dist
+          test -n "$(ls dist 2>/dev/null)" || { echo "没有产物，终止"; exit 1; }
+
+      - name: 创建草稿 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "ZenithDesk ${GITHUB_REF_NAME}" \
+            --draft \
+            --generate-notes \
+            dist/*
