@@ -6,7 +6,7 @@ import SessionList from './components/SessionList.jsx'
 import SettingsDialog from './components/SettingsDialog.jsx'
 import TasksPage from './components/TasksPage.jsx'
 import TracePanel from './components/TracePanel.jsx'
-import WorkspacePicker from './components/WorkspacePicker.jsx'
+import WorkspaceBrowser from './components/WorkspaceBrowser.jsx'
 import { normLang, t } from './i18n.js'
 import { parseMetrics } from './metrics.js'
 
@@ -34,6 +34,7 @@ export default function App() {
   const [status, setStatus] = useState(null)
   const [metrics, setMetrics] = useState({})
   const [connError, setConnError] = useState('')
+  const [inventory, setInventory] = useState([])
 
   const [sessions, setSessions] = useState([])
   const [activeId, setActiveId] = useState(null)
@@ -53,9 +54,32 @@ export default function App() {
   }, [sessions])
 
   /* ---------- 主题 ---------- */
+  const collapsedNow = !!settings?.sidebarCollapsed
+
+  // 主题：dark / light / system（跟随系统时监听系统配色变化）
   useEffect(() => {
-    document.documentElement.dataset.theme = settings?.theme === 'light' ? 'light' : 'dark'
+    const apply = () => {
+      const pref = settings?.theme || 'dark'
+      const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      document.documentElement.dataset.theme =
+        pref === 'system' ? (sysDark ? 'dark' : 'light') : pref === 'light' ? 'light' : 'dark'
+    }
+    apply()
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
   }, [settings?.theme])
+
+  // 折叠：宽内容先淡出、150ms 后卸载，再进轨道（对齐 DSH 的 COLLAPSE_SETTLE_MS）
+  const [settled, setSettled] = useState(false)
+  useEffect(() => {
+    if (!collapsedNow) {
+      setSettled(false)
+      return undefined
+    }
+    const timer = setTimeout(() => setSettled(true), 150)
+    return () => clearTimeout(timer)
+  }, [collapsedNow])
 
   const lang = normLang(settings?.uiLang || settings?.termLang)
   const baseUrl = settings?.baseUrl || ''
@@ -246,8 +270,14 @@ export default function App() {
   const refresh = useCallback(async (url) => {
     if (!url) return
     try {
-      const [m, st, mt] = await Promise.all([api.models(url), api.status(url), api.metrics(url)])
+      const [m, st, mt, pl] = await Promise.all([
+        api.models(url),
+        api.status(url),
+        api.metrics(url),
+        api.plugins(url).catch(() => ({ plugins: [] })),
+      ])
       setModels(m.data || [])
+      setInventory(pl?.plugins || [])
       setStatus(st)
       setMetrics(parseMetrics(mt))
       setConnError('')
@@ -362,7 +392,8 @@ export default function App() {
 
   const versions = api.versions ? api.versions() : {}
   const activeTitle = sessions.find((s) => s.id === activeId)?.title || t(lang, '新会话', 'New session')
-  const collapsed = !!settings?.sidebarCollapsed
+  const collapsed = collapsedNow
+  const wide = !collapsed || !settled
   const activeWorkspace = ui.activeWorkspace || 'default'
   const wsSessions = sessions.filter((s) => (s.workspaceId || 'default') === activeWorkspace)
 
@@ -425,27 +456,21 @@ export default function App() {
             </button>
           </nav>
 
-          <WorkspacePicker
-            workspaces={ui.workspaces || []}
-            activeId={activeWorkspace}
-            onSelect={switchWorkspace}
-            onCreate={createWorkspace}
-            lang={lang}
-          />
-
           <div className="dsh-workspace">
-            <SessionList
-              sessions={wsSessions}
-              activeId={activeId}
+            <WorkspaceBrowser
               workspaces={ui.workspaces || []}
-              onMove={moveSession}
+              sessions={sessions}
+              activeWorkspace={activeWorkspace}
+              activeId={activeId}
+              onSwitchWorkspace={switchWorkspace}
+              onCreateWorkspace={createWorkspace}
               onSelect={(id) => {
                 selectSession(id)
                 setPage('chat')
               }}
-              onCreate={createSession}
               onDelete={deleteSession}
               onRename={renameSession}
+              onMove={moveSession}
               lang={lang}
             />
           </div>
@@ -527,7 +552,9 @@ export default function App() {
 
         {page === 'plugins' ? (
           <PluginsPage
-            plugins={ui.plugins || []}
+            inventory={inventory}
+            localPlugins={ui.plugins || []}
+            connected={connected}
             lang={lang}
             onToggle={(id, enabled) =>
               patchUi({

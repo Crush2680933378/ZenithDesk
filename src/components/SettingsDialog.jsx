@@ -95,6 +95,12 @@ export default function SettingsDialog({ settings, onSave, onClose, connected, c
                   >
                     {t(lang, '浅色', 'Light')}
                   </button>
+                  <button
+                    className={`seg-btn ${settings?.theme === 'system' ? 'active' : ''}`}
+                    onClick={() => onSave({ theme: 'system' })}
+                  >
+                    {t(lang, '跟随系统', 'System')}
+                  </button>
                 </div>
               </div>
             )}

@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('zenith', {
 
   // 只读接口
   models: (baseUrl) => ipcRenderer.invoke('api:models', baseUrl),
+  plugins: (baseUrl) => ipcRenderer.invoke('api:plugins', baseUrl),
   status: (baseUrl) => ipcRenderer.invoke('api:status', baseUrl),
   metrics: (baseUrl) => ipcRenderer.invoke('api:metrics', baseUrl),
 

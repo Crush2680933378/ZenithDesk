@@ -712,6 +712,12 @@ ipcMain.handle('api:models', async (_e, baseUrl) => {
   return res.json()
 })
 
+ipcMain.handle('api:plugins', async (_e, baseUrl) => {
+  const res = await fetch(joinUrl(baseUrl, '/zenith/plugins'))
+  if (!res.ok) throw new Error(`GET /zenith/plugins -> HTTP ${res.status}`)
+  return res.json()
+})
+
 ipcMain.handle('api:status', async (_e, baseUrl) => {
   const res = await fetch(joinUrl(baseUrl, '/zenith/ai/status'))
   if (!res.ok) throw new Error(`GET /zenith/ai/status -> HTTP ${res.status}`)
