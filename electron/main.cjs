@@ -702,6 +702,13 @@ app.whenReady().then(async () => {
       setTimeout(doScroll, 2600)
       setTimeout(doScroll, 19000) // 截图前再滚一次（前面的重渲染可能重置过）
     }
+    if (process.argv.includes('--demo-settings')) {
+      setTimeout(() => {
+        win.webContents
+          .executeJavaScript('window.__zenithOpenSettings && window.__zenithOpenSettings()')
+          .catch(() => {})
+      }, 1600)
+    }
     const viewArg = process.argv.find((a) => a.startsWith('--demo-view='))
     if (viewArg) {
       const v = viewArg.slice('--demo-view='.length)

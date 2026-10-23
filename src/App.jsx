@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatPanel from './components/ChatPanel.jsx'
 import ModelView from './components/ModelView.jsx'
 import SessionList from './components/SessionList.jsx'
-import StatusPanel from './components/StatusPanel.jsx'
+import SettingsDialog from './components/SettingsDialog.jsx'
+import TracePanel from './components/TracePanel.jsx'
 import { parseMetrics } from './metrics.js'
 import { normLang, t } from './i18n.js'
 
@@ -38,7 +39,8 @@ export default function App() {
   const [messages, setMessages] = useState([])
   const [streamingId, setStreamingId] = useState(null)
   const [tab, setTab] = useState('sessions') // 侧栏：sessions | status
-  const [view, setView] = useState('chat')    // 主区：chat | model
+  const [mainTab, setMainTab] = useState('chat') // 主区：chat | trace
+  const [showSettings, setShowSettings] = useState(false)
 
   const currentRef = useRef(null)
   const loadedRef = useRef({ id: null, snapshot: '[]' })
@@ -299,7 +301,8 @@ export default function App() {
     window.__zenithDemo = send
     window.__zenithNewSession = createSession
     window.__zenithSetTab = setTab
-    window.__zenithSetView = setView
+    window.__zenithSetView = setMainTab
+    window.__zenithOpenSettings = () => setShowSettings(true)
     window.__zenithStartEngine = async () => {
       const r = await api.gatewayStart()
       if (r?.ok) {
@@ -323,133 +326,96 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark">天顶</span>
-          <span className="brand-name">ZenithDesk</span>
+      <aside className="sidebar dsh">
+        <div className="dsh-logo">
+          <span className="dsh-logo-mark">天顶</span>
+          <span className="dsh-logo-badge">ZENITHDESK</span>
         </div>
 
-        <div className="conn">
-          <input
-            className="input input-url"
-            value={urlDraft}
-            spellCheck={false}
-            onChange={(e) => setUrlDraft(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && saveSettings({ baseUrl: urlDraft })}
-            placeholder="http://127.0.0.1:8090"
-          />
-          <button className="btn" onClick={() => saveSettings({ baseUrl: urlDraft })}>
-            {t(lang, '连接', 'Connect')}
+        <button className="dsh-new" onClick={createSession}>
+          ＋ {t(lang, '新会话', 'New session')}
+        </button>
+
+        <SessionList
+          sessions={sessions}
+          activeId={activeId}
+          onSelect={selectSession}
+          onCreate={createSession}
+          onDelete={deleteSession}
+          onRename={renameSession}
+          lang={lang}
+        />
+
+        <div className="dsh-sidebar-foot">
+          <button className="dsh-nav-item" onClick={() => setShowSettings(true)}>
+            ⚙ {t(lang, '设置', 'Settings')}
           </button>
-          <span className={`badge ${connected ? 'badge-ok' : 'badge-bad'}`}>
-            {connected
-              ? t(lang, '已连接', 'online')
-              : connError
-                ? t(lang, '连接失败', 'offline')
-                : t(lang, '未连接', 'not connected')}
+        </div>
+      </aside>
+
+      <main className="main">
+        <div className="dsh-head">
+          <span className="dsh-title" title={activeTitle}>
+            {activeTitle}
           </span>
+
+          <select
+            className={`dsh-pill dsh-pill-select ${connected ? 'dsh-pill-ok' : ''}`}
+            value={settings.model || ''}
+            onChange={(e) => saveSettings({ model: e.target.value })}
+            title={t(lang, '选择模型', 'select model')}
+          >
+            <option value="">
+              {connected ? t(lang, '默认模型', 'default model') : t(lang, '未连接', 'offline')}
+            </option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.id}
+              </option>
+            ))}
+          </select>
+
+          <div className="dsh-tabs">
+            <button
+              className={`dsh-tab ${mainTab === 'chat' ? 'active' : ''}`}
+              onClick={() => setMainTab('chat')}
+            >
+              {t(lang, '对话', 'Chat')}
+            </button>
+            <button
+              className={`dsh-tab ${mainTab === 'trace' ? 'active' : ''}`}
+              onClick={() => setMainTab('trace')}
+            >
+              {t(lang, '轨迹', 'Trace')}
+            </button>
+          </div>
         </div>
 
-        <div className="controls" />
-      </header>
+        {mainTab === 'chat' ? (
+          <ChatPanel
+            messages={messages}
+            streamingId={streamingId}
+            onSend={send}
+            onCancel={cancel}
+            disabled={!connected}
+            lang={lang}
+            onOpenSettings={() => setShowSettings(true)}
+          />
+        ) : (
+          <TracePanel messages={messages} lang={lang} />
+        )}
+      </main>
 
-      <div className="body">
-        <aside className="sidebar dsh">
-          <div className="dsh-logo">
-            <span className="dsh-logo-mark">天顶</span>
-            <span className="dsh-logo-badge">ZENITHDESK</span>
-          </div>
-
-          <button className="dsh-new" onClick={createSession}>
-            ＋ {t(lang, '新会话', 'New session')}
-          </button>
-
-          <div className="dsh-nav">
-            <button
-              className={`dsh-nav-item ${tab === 'sessions' ? 'active' : ''}`}
-              onClick={() => setTab('sessions')}
-            >
-              {t(lang, '会话', 'Sessions')}
-              <span className="tab-count" style={{ marginLeft: 'auto' }}>{sessions.length}</span>
-            </button>
-            <button
-              className={`dsh-nav-item ${tab === 'status' ? 'active' : ''}`}
-              onClick={() => setTab('status')}
-            >
-              {t(lang, '状态', 'Status')}
-            </button>
-          </div>
-
-          {tab === 'sessions' ? (
-            <SessionList
-              sessions={sessions}
-              activeId={activeId}
-              onSelect={selectSession}
-              onCreate={createSession}
-              onDelete={deleteSession}
-              onRename={renameSession}
-              lang={lang}
-            />
-          ) : (
-            <>
-              {connError && <div className="alert">{connError}</div>}
-              <StatusPanel
-                status={status}
-                metrics={metrics}
-                models={models}
-                connected={connected}
-                lang={lang}
-              />
-            </>
-          )}
-        </aside>
-
-        <main className="main">
-          <div className="dsh-head">
-            <span className="dsh-title" title={activeTitle}>
-              {activeTitle}
-            </span>
-            <span className={`dsh-pill ${connected ? 'dsh-pill-ok' : ''}`}>
-              {connected ? t(lang, '已连接', 'online') : t(lang, '未连接', 'offline')}
-            </span>
-            {status?.backend && <span className="dsh-pill">{status.backend}</span>}
-            <div className="dsh-tabs">
-              <button className={`dsh-tab ${view === 'chat' ? 'active' : ''}`} onClick={() => setView('chat')}>
-                {t(lang, '对话', 'Chat')}
-              </button>
-              <button className={`dsh-tab ${view === 'model' ? 'active' : ''}`} onClick={() => setView('model')}>
-                {t(lang, '模型运行', 'Model')}
-              </button>
-            </div>
-          </div>
-          {view === 'chat' ? (
-            <ChatPanel
-              messages={messages}
-              streamingId={streamingId}
-              onSend={send}
-              onCancel={cancel}
-              disabled={!connected}
-              lang={lang}
-              models={models}
-              settings={settings}
-              onSave={saveSettings}
-              status={status}
-              metrics={metrics}
-              gpu={gpu}
-            />
-          ) : (
-            <ModelView settings={settings} onSave={saveSettings} onStarted={() => refresh(settings.baseUrl)} />
-          )}
-        </main>
-      </div>
-
-      <footer className="statusbar">
-        <span>Electron {versions.electron || '?'}</span>
-        <span>Chromium {versions.chrome || '?'}</span>
-        <span>Node {versions.node || '?'}</span>
-        <span className="spacer" />
-        <span>{baseUrl || t(lang, '未设置网关', 'no gateway')}</span>
-      </footer>
+      {showSettings && (
+        <SettingsDialog
+          settings={settings}
+          onSave={saveSettings}
+          onClose={() => setShowSettings(false)}
+          onStarted={() => refresh(settings.baseUrl)}
+          connected={connected}
+          connError={connError}
+        />
+      )}
     </div>
   )
 }
