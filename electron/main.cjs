@@ -431,6 +431,42 @@ ipcMain.handle('settings:get', () => readSettings())
 ipcMain.handle('settings:set', (_e, next) => writeSettings(next || {}))
 
 // ---------------------------------------------------------------------------
+//  界面本地状态（工作区 / 插件清单 / 自动化任务）
+//  这些是"顾客侧"的组织信息，不涉及推理；统一存 ui-state.json
+// ---------------------------------------------------------------------------
+const uiStateFile = () => path.join(app.getPath('userData'), 'ui-state.json')
+
+const DEFAULT_UI_STATE = {
+  activeWorkspace: 'default',
+  workspaces: [{ id: 'default', name: '我的工作区', createdAt: '2026-01-01T00:00:00.000Z' }],
+  plugins: [
+    { id: 'ai_inference', name: 'AI 推理网关', version: '1.0.0', enabled: true, desc: '统一 OpenAI 兼容入口' },
+    { id: 'ai_llama', name: 'llama.cpp 引擎', version: '1.0.0', enabled: true, desc: 'GGUF 本地推理' },
+    { id: 'ai_ninfer_native', name: 'NInfer 引擎', version: '3.0.0', enabled: true, desc: 'GPU 进程内推理' },
+    { id: 'media_ffmpeg', name: '媒体处理', version: '1.0.0', enabled: true, desc: '音视频转码与抽帧' },
+    { id: 'ai_comfyui', name: 'ComfyUI 绘画', version: '1.0.0', enabled: false, desc: '图像生成工作流' },
+    { id: 'edge_esp32', name: '边缘设备桥', version: '1.0.0', enabled: false, desc: 'ESP32 / RK3566 设备接入' },
+  ],
+  tasks: [
+    { id: 't1', name: '每日会话摘要', schedule: '每天 09:00', enabled: false, prompt: '总结昨天的会话要点' },
+    { id: 't2', name: '周报生成', schedule: '每周一 10:00', enabled: false, prompt: '汇总上周的工作进展' },
+  ],
+}
+
+function readUiState() {
+  const raw = readJsonFile(uiStateFile(), null)
+  return { ...DEFAULT_UI_STATE, ...(raw || {}) }
+}
+
+ipcMain.handle('ui:state', () => readUiState())
+ipcMain.handle('ui:set', (_e, patch) => {
+  const next = { ...readUiState(), ...(patch || {}) }
+  fs.mkdirSync(path.dirname(uiStateFile()), { recursive: true })
+  fs.writeFileSync(uiStateFile(), JSON.stringify(next, null, 2), { encoding: 'utf8' })
+  return next
+})
+
+// ---------------------------------------------------------------------------
 //  会话历史（多会话 + 落盘）
 //
 //  存储：userData/sessions.json，单文件整体重写 + 临时文件改名（原子替换）。

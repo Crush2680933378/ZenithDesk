@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatPanel from './components/ChatPanel.jsx'
-import ModelView from './components/ModelView.jsx'
 import SessionList from './components/SessionList.jsx'
+import PluginsPage from './components/PluginsPage.jsx'
 import SettingsDialog from './components/SettingsDialog.jsx'
+import TasksPage from './components/TasksPage.jsx'
 import TracePanel from './components/TracePanel.jsx'
 import { parseMetrics } from './metrics.js'
 import { normLang, t } from './i18n.js'
@@ -39,7 +40,8 @@ export default function App() {
   const [messages, setMessages] = useState([])
   const [streamingId, setStreamingId] = useState(null)
   const [tab, setTab] = useState('sessions') // 侧栏：sessions | status
-  const [mainTab, setMainTab] = useState('chat') // 主区：chat | trace
+  const [page, setPage] = useState('chat') // chat | trace | plugins | tasks
+  const [ui, setUi] = useState({ workspaces: [], plugins: [], tasks: [] })
   const [showSettings, setShowSettings] = useState(false)
 
   const currentRef = useRef(null)
@@ -73,6 +75,9 @@ export default function App() {
       if (cancelled) return
       setSettings(s)
       setUrlDraft(s.baseUrl)
+
+      const u = await api.uiState()
+      if (!cancelled && u) setUi(u)
 
       const st = await api.sessionsState()
       if (cancelled) return
@@ -240,6 +245,11 @@ export default function App() {
     }
   }
 
+  const patchUi = async (patch) => {
+    const next = await api.uiSet(patch)
+    if (next) setUi(next)
+  }
+
   const renameSession = async (id, title) => {
     const next = await api.sessionsRename(id, title)
     applyState(next)
@@ -301,7 +311,7 @@ export default function App() {
     window.__zenithDemo = send
     window.__zenithNewSession = createSession
     window.__zenithSetTab = setTab
-    window.__zenithSetView = setMainTab
+    window.__zenithSetView = setPage
     window.__zenithOpenSettings = () => setShowSettings(true)
     window.__zenithStartEngine = async () => {
       const r = await api.gatewayStart()
@@ -327,24 +337,62 @@ export default function App() {
   return (
     <div className="app">
       <aside className="sidebar dsh">
-        <div className="dsh-logo">
-          <span className="dsh-logo-mark">天顶</span>
-          <span className="dsh-logo-badge">ZENITHDESK</span>
+        <div className="dsh-brand">
+          <span className="dsh-brand-mark">天顶</span>
+          <span className="dsh-brand-badge">ZENITHDESK</span>
         </div>
 
         <button className="dsh-new" onClick={createSession}>
-          ＋ {t(lang, '新会话', 'New session')}
+          <span className="dsh-new-plus">＋</span>
+          {t(lang, '新会话', 'New session')}
         </button>
 
-        <SessionList
-          sessions={sessions}
-          activeId={activeId}
-          onSelect={selectSession}
-          onCreate={createSession}
-          onDelete={deleteSession}
-          onRename={renameSession}
-          lang={lang}
-        />
+        <nav className="dsh-nav">
+          <button
+            className={`dsh-nav-item ${page === 'chat' || page === 'trace' ? 'active' : ''}`}
+            onClick={() => setPage('chat')}
+          >
+            {t(lang, '对话', 'Conversations')}
+            <span className="tab-count" style={{ marginLeft: 'auto' }}>{sessions.length}</span>
+          </button>
+          <button
+            className={`dsh-nav-item ${page === 'plugins' ? 'active' : ''}`}
+            onClick={() => setPage('plugins')}
+          >
+            {t(lang, '插件', 'Plugins')}
+            <span className="tab-count" style={{ marginLeft: 'auto' }}>
+              {ui.plugins?.filter((p) => p.enabled).length || 0}
+            </span>
+          </button>
+          <button
+            className={`dsh-nav-item ${page === 'tasks' ? 'active' : ''}`}
+            onClick={() => setPage('tasks')}
+          >
+            {t(lang, '自动化任务', 'Automation')}
+            <span className="tab-count" style={{ marginLeft: 'auto' }}>
+              {ui.tasks?.filter((x) => x.enabled).length || 0}
+            </span>
+          </button>
+        </nav>
+
+        <div className="dsh-workspace">
+          <div className="dsh-section">
+            {ui.workspaces?.find((w) => w.id === ui.activeWorkspace)?.name ||
+              t(lang, '工作区', 'Workspace')}
+          </div>
+          <SessionList
+            sessions={sessions}
+            activeId={activeId}
+            onSelect={(id) => {
+              selectSession(id)
+              setPage('chat')
+            }}
+            onCreate={createSession}
+            onDelete={deleteSession}
+            onRename={renameSession}
+            lang={lang}
+          />
+        </div>
 
         <div className="dsh-sidebar-foot">
           <button className="dsh-nav-item" onClick={() => setShowSettings(true)}>
@@ -356,42 +404,50 @@ export default function App() {
       <main className="main">
         <div className="dsh-head">
           <span className="dsh-title" title={activeTitle}>
-            {activeTitle}
+            {page === 'plugins'
+              ? t(lang, '插件', 'Plugins')
+              : page === 'tasks'
+                ? t(lang, '自动化任务', 'Automation')
+                : activeTitle}
           </span>
 
-          <select
-            className={`dsh-pill dsh-pill-select ${connected ? 'dsh-pill-ok' : ''}`}
-            value={settings.model || ''}
-            onChange={(e) => saveSettings({ model: e.target.value })}
-            title={t(lang, '选择模型', 'select model')}
-          >
-            <option value="">
-              {connected ? t(lang, '默认模型', 'default model') : t(lang, '未连接', 'offline')}
-            </option>
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.id}
-              </option>
-            ))}
-          </select>
+          <span className={`dsh-pill ${connected ? 'dsh-pill-ok' : ''}`}>
+            {connected ? t(lang, '已连接', 'online') : t(lang, '未连接', 'offline')}
+          </span>
 
-          <div className="dsh-tabs">
-            <button
-              className={`dsh-tab ${mainTab === 'chat' ? 'active' : ''}`}
-              onClick={() => setMainTab('chat')}
-            >
-              {t(lang, '对话', 'Chat')}
-            </button>
-            <button
-              className={`dsh-tab ${mainTab === 'trace' ? 'active' : ''}`}
-              onClick={() => setMainTab('trace')}
-            >
-              {t(lang, '轨迹', 'Trace')}
-            </button>
-          </div>
+          {(page === 'chat' || page === 'trace') && (
+            <div className="dsh-tabs">
+              <button
+                className={`dsh-tab ${page === 'chat' ? 'active' : ''}`}
+                onClick={() => setPage('chat')}
+              >
+                {t(lang, '对话', 'Chat')}
+              </button>
+              <button
+                className={`dsh-tab ${page === 'trace' ? 'active' : ''}`}
+                onClick={() => setPage('trace')}
+              >
+                {t(lang, '轨迹', 'Trace')}
+              </button>
+            </div>
+          )}
         </div>
 
-        {mainTab === 'chat' ? (
+        {page === 'plugins' ? (
+          <PluginsPage
+            plugins={ui.plugins || []}
+            lang={lang}
+            onToggle={(id, enabled) =>
+              patchUi({
+                plugins: (ui.plugins || []).map((p) => (p.id === id ? { ...p, enabled } : p)),
+              })
+            }
+          />
+        ) : page === 'tasks' ? (
+          <TasksPage tasks={ui.tasks || []} onChange={(tasks) => patchUi({ tasks })} lang={lang} />
+        ) : page === 'trace' ? (
+          <TracePanel messages={messages} lang={lang} />
+        ) : (
           <ChatPanel
             messages={messages}
             streamingId={streamingId}
@@ -401,8 +457,6 @@ export default function App() {
             lang={lang}
             onOpenSettings={() => setShowSettings(true)}
           />
-        ) : (
-          <TracePanel messages={messages} lang={lang} />
         )}
       </main>
 
@@ -411,7 +465,6 @@ export default function App() {
           settings={settings}
           onSave={saveSettings}
           onClose={() => setShowSettings(false)}
-          onStarted={() => refresh(settings.baseUrl)}
           connected={connected}
           connError={connError}
         />

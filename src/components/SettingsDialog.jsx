@@ -1,28 +1,21 @@
 import { useState } from 'react'
 import { LANGS, normLang, t } from '../i18n.js'
-import ModelView from './ModelView.jsx'
 
 /**
- * 设置：把"服务端/引擎"这类东西全收进来，主界面只留聊天。
- * 顾客视角看不到这些；运维/调试时点齿轮进来。
+ * 设置：顾客侧只需要两件事 —— 连哪个后端、界面用什么语言。
+ * 引擎启动 / 模型参数一律不在前端（那是后端的事）。
  */
-export default function SettingsDialog({ settings, onSave, onClose, onStarted, connected, connError }) {
+export default function SettingsDialog({ settings, onSave, onClose, connected, connError }) {
   const lang = normLang(settings?.termLang)
   const [urlDraft, setUrlDraft] = useState(settings?.baseUrl || '')
-  const [section, setSection] = useState('engine') // engine | connection | ui
+  const [section, setSection] = useState('connection') // connection | ui
 
   return (
     <div className="modal-mask" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-sm" onClick={(e) => e.stopPropagation()}>
         <header className="modal-head">
           <span className="modal-title">{t(lang, '设置', 'Settings')}</span>
           <div className="modal-tabs">
-            <button
-              className={`dsh-tab ${section === 'engine' ? 'active' : ''}`}
-              onClick={() => setSection('engine')}
-            >
-              {t(lang, '引擎', 'Engine')}
-            </button>
             <button
               className={`dsh-tab ${section === 'connection' ? 'active' : ''}`}
               onClick={() => setSection('connection')}
@@ -42,13 +35,9 @@ export default function SettingsDialog({ settings, onSave, onClose, onStarted, c
         </header>
 
         <div className="modal-body">
-          {section === 'engine' && (
-            <ModelView settings={settings} onSave={onSave} onStarted={onStarted} />
-          )}
-
           {section === 'connection' && (
             <div className="settings-block">
-              <div className="dsh-section">{t(lang, '网关地址', 'Gateway URL')}</div>
+              <div className="dsh-section">{t(lang, '服务地址', 'Service URL')}</div>
               <div className="composer-row">
                 <input
                   className="input input-url"
@@ -59,7 +48,7 @@ export default function SettingsDialog({ settings, onSave, onClose, onStarted, c
                   placeholder="http://127.0.0.1:8090"
                 />
                 <button className="btn" onClick={() => onSave({ baseUrl: urlDraft })}>
-                  {t(lang, '连接', 'Connect')}
+                  {t(lang, '保存并连接', 'Save & connect')}
                 </button>
                 <span className={`dsh-pill ${connected ? 'dsh-pill-ok' : ''}`}>
                   {connected
@@ -72,8 +61,8 @@ export default function SettingsDialog({ settings, onSave, onClose, onStarted, c
               <p className="muted" style={{ marginTop: 10 }}>
                 {t(
                   lang,
-                  '顾客界面不显示这些；只有需要换后端时才进来。',
-                  'Customers never see this — only for switching backends.',
+                  '服务由后台运维部署；顾客只需填地址（通常保持默认）。',
+                  'The service is deployed by ops; usually keep the default.',
                 )}
               </p>
             </div>
@@ -86,7 +75,7 @@ export default function SettingsDialog({ settings, onSave, onClose, onStarted, c
                 {LANGS.map((l) => (
                   <button
                     key={l.v}
-                    className={`btn ${normLang(settings?.termLang) === l.v ? 'btn-primary btn-on' : ''}`}
+                    className={`btn ${normLang(settings?.termLang) === l.v ? 'btn-on' : ''}`}
                     onClick={() => onSave({ termLang: l.v })}
                   >
                     {l.label}

@@ -17,6 +17,10 @@ contextBridge.exposeInMainWorld('zenith', {
   status: (baseUrl) => ipcRenderer.invoke('api:status', baseUrl),
   metrics: (baseUrl) => ipcRenderer.invoke('api:metrics', baseUrl),
 
+  // 界面本地状态：工作区 / 插件清单 / 自动化任务
+  uiState: () => ipcRenderer.invoke('ui:state'),
+  uiSet: (patch) => ipcRenderer.invoke('ui:set', patch),
+
   // 会话历史（多会话 + 落盘，主进程持有存储）
   sessionsState: () => ipcRenderer.invoke('sessions:state'),
   sessionsGet: (id) => ipcRenderer.invoke('sessions:get', id),
