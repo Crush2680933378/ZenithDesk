@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { normLang, t } from '../i18n.js'
+import ChatStatusBar from './ChatStatusBar.jsx'
 
 function Reasoning({ text, lang, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -15,7 +16,20 @@ function Reasoning({ text, lang, defaultOpen = false }) {
   )
 }
 
-export default function ChatPanel({ messages, streamingId, onSend, onCancel, disabled, lang: langProp }) {
+export default function ChatPanel({
+  messages,
+  streamingId,
+  onSend,
+  onCancel,
+  disabled,
+  lang: langProp,
+  models = [],
+  settings,
+  onSave,
+  status,
+  metrics,
+  gpu,
+}) {
   const lang = normLang(langProp)
   const [input, setInput] = useState('')
   const scroller = useRef(null)
@@ -67,7 +81,7 @@ export default function ChatPanel({ messages, streamingId, onSend, onCancel, dis
                 <div className="msg-warn">
                   {t(
                     lang,
-                    `⚠ 模型把 ${m.meta?.completion ?? '?'} 个 token 全用在思考上，正文本轮没有产出（finish=${m.meta?.finish || 'length'}）。把 tokens 调大，或把顶栏「思考」设为关。`,
+                    `⚠ 模型把 ${m.meta?.completion ?? '?'} 个 token 全用在思考上，正文本轮没有产出（finish=${m.meta?.finish || 'length'}）。把 tokens 调大，或在输入框旁把「思考」设为关。`,
                     `⚠ All ${m.meta?.completion ?? '?'} tokens went into reasoning, so no answer text was produced (finish=${m.meta?.finish || 'length'}). Raise tokens or switch thinking off.`,
                   )}
                 </div>
@@ -103,7 +117,57 @@ export default function ChatPanel({ messages, streamingId, onSend, onCancel, dis
           }}
           rows={3}
         />
-        <div className="composer-actions">
+
+        {/* 模型 / 思考 / tokens 就放在输入框下方左侧（DSH 同款位置） */}
+        <div className="composer-row">
+          <select
+            className="input input-model"
+            value={settings?.model || ''}
+            onChange={(e) => onSave?.({ model: e.target.value })}
+            title={t(lang, '选择模型', 'select model')}
+          >
+            <option value="">{t(lang, '默认模型', 'default model')}</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.id}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="input input-sm"
+            value={settings?.thinking ?? 0}
+            onChange={(e) => onSave?.({ thinking: Number(e.target.value) })}
+            title={t(lang, '本次请求是否思考', 'thinking for this request')}
+          >
+            <option value={-1}>{t(lang, '思考：关', 'think off')}</option>
+            <option value={0}>{t(lang, '思考：默认', 'think default')}</option>
+            <option value={1}>{t(lang, '思考：开', 'think on')}</option>
+          </select>
+
+          <input
+            className="input input-sm"
+            type="number"
+            min="1"
+            step="64"
+            value={settings?.maxTokens ?? 1024}
+            onChange={(e) => onSave?.({ maxTokens: Number(e.target.value) })}
+            title={t(lang, '本次最大输出 token', 'max output tokens')}
+          />
+
+          <input
+            className="input input-sm"
+            type="number"
+            min="0"
+            max="2"
+            step="0.1"
+            value={settings?.temperature ?? 0.7}
+            onChange={(e) => onSave?.({ temperature: Number(e.target.value) })}
+            title={t(lang, '温度 temperature', 'temperature')}
+          />
+
+          <span className="cs-spacer" />
+
           {streamingId ? (
             <button className="btn btn-danger" onClick={onCancel}>
               {t(lang, '停止', 'Stop')}
@@ -115,6 +179,15 @@ export default function ChatPanel({ messages, streamingId, onSend, onCancel, dis
           )}
         </div>
       </div>
+
+      <ChatStatusBar
+        status={status}
+        metrics={metrics}
+        gpu={gpu}
+        models={models}
+        connected={!disabled}
+        lang={lang}
+      />
     </div>
   )
 }

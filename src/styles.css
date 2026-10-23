@@ -582,3 +582,46 @@ body {
   border: 1px solid #4a3a12;
   border-radius: 6px;
 }
+
+/* ================= 聊天输入区：模型选择 + 底部状态条（DSH 风格） ================= */
+.composer { display: flex; flex-direction: column; gap: 8px; }
+.composer-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.input-model {
+  max-width: 260px;
+  font-size: 11.5px;
+  font-family: var(--mono);
+}
+.cs-spacer { flex: 1; }
+
+.chat-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 18px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  background: #0b0f14;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.cs-model { color: var(--text); font-family: var(--mono); font-size: 11px; }
+.live-dot-off { background: var(--bad); box-shadow: none; animation: none; }
+.chipinfo-sep { width: 1px; height: 12px; background: var(--border); flex: 0 0 1px; }
+.chipinfo { display: inline-flex; align-items: baseline; gap: 4px; }
+.chipinfo-label { color: #5b6673; }
+.chipinfo-value { color: #c9d5e3; font-family: var(--mono); }
+.chipinfo.chip-good .chipinfo-value { color: var(--ok); }
+.chipinfo.chip-warn .chipinfo-value { color: var(--warn); }
+
+/* 三段式高度：view-bar(auto) / 消息区(1fr) / 输入区+状态条(auto) */
+.main { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.chat { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.chat .messages { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.composer { flex: 0 0 auto; }
+.chat-status { flex: 0 0 auto; }
+
+/* 状态条：内容多时换行而不是横向滚动；思考下拉给足宽度 */
+.chat-status { flex-wrap: wrap; white-space: normal; overflow-x: visible; row-gap: 4px; }
+.composer-row select[title*="思考"] { min-width: 104px; }
+.composer-row .input-sm { width: 84px; }

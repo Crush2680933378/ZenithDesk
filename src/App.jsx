@@ -30,6 +30,7 @@ export default function App() {
   const [models, setModels] = useState([])
   const [status, setStatus] = useState(null)
   const [metrics, setMetrics] = useState({})
+  const [gpu, setGpu] = useState({ available: false })
   const [connError, setConnError] = useState('')
 
   const [sessions, setSessions] = useState([])
@@ -99,10 +100,16 @@ export default function App() {
   const refresh = useCallback(async (url) => {
     if (!url) return
     try {
-      const [m, st, mt] = await Promise.all([api.models(url), api.status(url), api.metrics(url)])
+      const [m, st, mt, g] = await Promise.all([
+        api.models(url),
+        api.status(url),
+        api.metrics(url),
+        api.gpu().catch(() => ({ available: false })),
+      ])
       setModels(m.data || [])
       setStatus(st)
       setMetrics(parseMetrics(mt))
+      setGpu(g || { available: false })
       setConnError('')
     } catch (e) {
       setConnError(String(e?.message || e))
@@ -341,58 +348,7 @@ export default function App() {
           </span>
         </div>
 
-        <div className="controls">
-          <select
-            className="input"
-            value={settings.model}
-            onChange={(e) => saveSettings({ model: e.target.value })}
-          >
-            <option value="">{t(lang, '默认模型', 'default model')}</option>
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.id}
-              </option>
-            ))}
-          </select>
-
-          <label className="ctl" title="思考模式：关 / 默认 / 开（单次请求覆盖启动默认）">
-            {t(lang, '思考', 'thinking')}
-            <select
-              className="input input-sm"
-              value={settings.thinking}
-              onChange={(e) => saveSettings({ thinking: Number(e.target.value) })}
-            >
-              <option value={-1}>{t(lang, '关', 'off')}</option>
-              <option value={0}>{t(lang, '默认', 'default')}</option>
-              <option value={1}>{t(lang, '开', 'on')}</option>
-            </select>
-          </label>
-
-          <label className="ctl" title="temperature">
-            {t(lang, '温度', 'temp')}
-            <input
-              className="input input-sm"
-              type="number"
-              step="0.1"
-              min="0"
-              max="2"
-              value={settings.temperature}
-              onChange={(e) => saveSettings({ temperature: Number(e.target.value) })}
-            />
-          </label>
-
-          <label className="ctl" title="max_tokens">
-            tokens
-            <input
-              className="input input-sm"
-              type="number"
-              step="64"
-              min="1"
-              value={settings.maxTokens}
-              onChange={(e) => saveSettings({ maxTokens: Number(e.target.value) })}
-            />
-          </label>
-        </div>
+        <div className="controls" />
       </header>
 
       <div className="body">
@@ -464,6 +420,12 @@ export default function App() {
               onCancel={cancel}
               disabled={!connected}
               lang={lang}
+              models={models}
+              settings={settings}
+              onSave={saveSettings}
+              status={status}
+              metrics={metrics}
+              gpu={gpu}
             />
           ) : (
             <ModelView settings={settings} onSave={saveSettings} onStarted={() => refresh(settings.baseUrl)} />
