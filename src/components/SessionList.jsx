@@ -1,23 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { normLang, t } from '../i18n.js'
 
-/** 相对时间：刚刚 / N 分钟前 / N 小时前 / 昨天 / MM-DD */
-function relTime(iso) {
+/** 相对时间：刚刚 / N 分钟前 / N 小时前 */
+function relTime(iso, lang) {
   if (!iso) return ''
-  const t = new Date(iso).getTime()
-  if (Number.isNaN(t)) return ''
-  const diff = Date.now() - t
-  const min = Math.floor(diff / 60000)
-  if (min < 1) return '刚刚'
-  if (min < 60) return `${min} 分钟前`
+  const ts = new Date(iso).getTime()
+  if (Number.isNaN(ts)) return ''
+  const min = Math.floor((Date.now() - ts) / 60000)
+  if (min < 1) return t(lang, '刚刚', 'just now')
+  if (min < 60) return t(lang, `${min} 分钟前`, `${min}m ago`)
   const hours = Math.floor(min / 60)
-  if (hours < 24) return `${hours} 小时前`
-  if (hours < 48) return '昨天'
-  const d = new Date(t)
+  if (hours < 24) return t(lang, `${hours} 小时前`, `${hours}h ago`)
+  const d = new Date(ts)
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export default function SessionList({ sessions, activeId, onSelect, onCreate, onDelete, onRename, lang: langProp }) {
+export default function SessionList({ sessions, activeId, onSelect, onDelete, onRename, lang: langProp }) {
   const lang = normLang(langProp)
   const [editing, setEditing] = useState(null)
   const [draft, setDraft] = useState('')
@@ -33,58 +31,83 @@ export default function SessionList({ sessions, activeId, onSelect, onCreate, on
     setEditing(null)
   }
 
+  // 按"今天 / 昨天 / 更早"分组（DSH 的会话列表也是这么分的）
+  const dayOf = (iso) => {
+    const d = new Date(iso || 0)
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const day = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+    if (day >= startOfToday) return t(lang, '今天', 'today')
+    if (day >= startOfToday - 86400000) return t(lang, '昨天', 'yesterday')
+    return t(lang, '更早', 'earlier')
+  }
+
+  const groups = []
+  for (const s of sessions) {
+    const name = dayOf(s.updatedAt)
+    let bucket = groups.find((g) => g.name === name)
+    if (!bucket) {
+      bucket = { name, items: [] }
+      groups.push(bucket)
+    }
+    bucket.items.push(s)
+  }
+
   return (
     <div className="sessions">
-      <button className="btn btn-block" onClick={onCreate}>
-        ＋ {t(lang, '新会话', 'new session')}
-      </button>
-
-      <div className="session-items">
-        {sessions.length === 0 && <div className="muted">{t(lang, '还没有会话', 'no sessions yet')}</div>}
-        {sessions.map((s) => (
-          <div
-            key={s.id}
-            className={`session-item ${s.id === activeId ? 'active' : ''}`}
-            onClick={() => onSelect(s.id)}
-            onDoubleClick={() => {
-              setEditing(s.id)
-              setDraft(s.title)
-            }}
-            title="双击重命名"
-          >
-            {editing === s.id ? (
-              <input
-                ref={inputRef}
-                className="session-input"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onBlur={() => commit(s.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') commit(s.id)
-                  if (e.key === 'Escape') setEditing(null)
-                }}
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : (
-              <div className="session-title">{s.title || '未命名'}</div>
-            )}
-            <div className="session-meta">
-              {relTime(s.updatedAt)}
-              {s.messageCount ? ` · ${Math.ceil(s.messageCount / 2)} ${t(lang, '轮', 'turns')}` : ''}
-            </div>
-            <button
-              className="session-del"
-              title="删除会话"
-              onClick={(e) => {
-                e.stopPropagation()
-                onDelete(s.id)
+      {sessions.length === 0 && (
+        <div className="muted">{t(lang, '还没有会话', 'no sessions yet')}</div>
+      )}
+      {groups.map((g) => (
+        <div key={g.name}>
+          <div className="dsh-section">{g.name}</div>
+          {g.items.map((s) => (
+            <div
+              key={s.id}
+              className={`dsh-session ${s.id === activeId ? 'active' : ''}`}
+              onClick={() => onSelect(s.id)}
+              onDoubleClick={() => {
+                setEditing(s.id)
+                setDraft(s.title)
               }}
+              title={t(lang, '双击重命名', 'double-click to rename')}
             >
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
+              {editing === s.id ? (
+                <input
+                  ref={inputRef}
+                  className="session-input"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={() => commit(s.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commit(s.id)
+                    if (e.key === 'Escape') setEditing(null)
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <div className="dsh-session-title">{s.title || t(lang, '未命名', 'untitled')}</div>
+              )}
+              <div className="dsh-session-meta">
+                {relTime(s.updatedAt, lang)}
+                {s.messageCount
+                  ? ` · ${Math.ceil(s.messageCount / 2)} ${t(lang, '轮', 'turns')}`
+                  : ''}
+              </div>
+              <button
+                className="session-del"
+                title={t(lang, '删除会话', 'delete session')}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDelete(s.id)
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   )
 }

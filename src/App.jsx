@@ -354,20 +354,29 @@ export default function App() {
       </header>
 
       <div className="body">
-        <aside className="sidebar">
-          <div className="tabs">
+        <aside className="sidebar dsh">
+          <div className="dsh-logo">
+            <span className="dsh-logo-mark">天顶</span>
+            <span className="dsh-logo-badge">ZENITHDESK</span>
+          </div>
+
+          <button className="dsh-new" onClick={createSession}>
+            ＋ {t(lang, '新会话', 'New session')}
+          </button>
+
+          <div className="dsh-nav">
             <button
-              className={`tab ${tab === 'sessions' ? 'active' : ''}`}
+              className={`dsh-nav-item ${tab === 'sessions' ? 'active' : ''}`}
               onClick={() => setTab('sessions')}
             >
-              {t(lang, '会话', 'sessions')} <span className="tab-count">{sessions.length}</span>
+              {t(lang, '会话', 'Sessions')}
+              <span className="tab-count" style={{ marginLeft: 'auto' }}>{sessions.length}</span>
             </button>
-
             <button
-              className={`tab ${tab === 'status' ? 'active' : ''}`}
+              className={`dsh-nav-item ${tab === 'status' ? 'active' : ''}`}
               onClick={() => setTab('status')}
             >
-              {t(lang, '状态', 'status')}
+              {t(lang, '状态', 'Status')}
             </button>
           </div>
 
@@ -396,23 +405,22 @@ export default function App() {
         </aside>
 
         <main className="main">
-          <div className="view-bar">
-            <button className={`vtab ${view === 'chat' ? 'active' : ''}`} onClick={() => setView('chat')}>
-              {t(lang, '对话', 'chat')}
-            </button>
-            <button className={`vtab ${view === 'model' ? 'active' : ''}`} onClick={() => setView('model')}>
-              {t(lang, '模型运行', 'model runtime')}
-            </button>
-            {view === 'chat' && (
-              <>
-                <span className="chat-title" title={activeTitle}>
-                  {activeTitle}
-                </span>
-                <span className="chat-sub">
-                  {t(lang, `${stable(messages).length} 条消息 · 自动落盘`, `${stable(messages).length} messages · autosaved`)}
-                </span>
-              </>
-            )}
+          <div className="dsh-head">
+            <span className="dsh-title" title={activeTitle}>
+              {activeTitle}
+            </span>
+            <span className={`dsh-pill ${connected ? 'dsh-pill-ok' : ''}`}>
+              {connected ? t(lang, '已连接', 'online') : t(lang, '未连接', 'offline')}
+            </span>
+            {status?.backend && <span className="dsh-pill">{status.backend}</span>}
+            <div className="dsh-tabs">
+              <button className={`dsh-tab ${view === 'chat' ? 'active' : ''}`} onClick={() => setView('chat')}>
+                {t(lang, '对话', 'Chat')}
+              </button>
+              <button className={`dsh-tab ${view === 'model' ? 'active' : ''}`} onClick={() => setView('model')}>
+                {t(lang, '模型运行', 'Model')}
+              </button>
+            </div>
           </div>
           {view === 'chat' ? (
             <ChatPanel

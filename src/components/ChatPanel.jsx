@@ -193,8 +193,13 @@ export default function ChatPanel({
               {t(lang, '停止', 'Stop')}
             </button>
           ) : (
-            <button className="btn btn-primary" onClick={submit} disabled={disabled}>
-              {t(lang, '发送', 'Send')}
+            <button
+              className="btn btn-primary"
+              onClick={submit}
+              disabled={disabled}
+              title={t(lang, '发送（Enter）', 'send (Enter)')}
+            >
+              ↑
             </button>
           )}
         </div>
