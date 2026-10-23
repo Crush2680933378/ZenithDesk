@@ -18,6 +18,14 @@ contextBridge.exposeInMainWorld('zenith', {
   metrics: (baseUrl) => ipcRenderer.invoke('api:metrics', baseUrl),
 
   // 界面本地状态：工作区 / 插件清单 / 自动化任务
+  setAppLang: (lang) => ipcRenderer.invoke('app:set-lang', lang),
+  appQuit: () => ipcRenderer.invoke('app:quit'),
+  appReload: () => ipcRenderer.invoke('app:reload'),
+  appDevTools: () => ipcRenderer.invoke('app:devtools'),
+  appZoom: (dir) => ipcRenderer.invoke('app:zoom', dir),
+  appFullscreen: () => ipcRenderer.invoke('app:fullscreen'),
+  onMenu: (cb) => { const h = (_e, a) => cb(a); ipcRenderer.on('menu:action', h); return () => ipcRenderer.off('menu:action', h) },
+
   uiState: () => ipcRenderer.invoke('ui:state'),
   uiSet: (patch) => ipcRenderer.invoke('ui:set', patch),
 
@@ -29,6 +37,7 @@ contextBridge.exposeInMainWorld('zenith', {
   sessionsRename: (id, title) => ipcRenderer.invoke('sessions:rename', { id, title }),
   sessionsSave: (payload) => ipcRenderer.invoke('sessions:save', payload),
   sessionsDelete: (id) => ipcRenderer.invoke('sessions:delete', id),
+  sessionsMove: (id, workspaceId) => ipcRenderer.invoke('sessions:move', { id, workspaceId }),
 
   // 本地引擎（把 Zenith 网关作为子进程拉起）
   gatewayStart: (cfg) => ipcRenderer.invoke('gateway:start', cfg),

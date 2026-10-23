@@ -15,9 +15,19 @@ function relTime(iso, lang) {
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export default function SessionList({ sessions, activeId, onSelect, onDelete, onRename, lang: langProp }) {
+export default function SessionList({
+  sessions,
+  activeId,
+  workspaces = [],
+  onMove,
+  onSelect,
+  onDelete,
+  onRename,
+  lang: langProp,
+}) {
   const lang = normLang(langProp)
   const [editing, setEditing] = useState(null)
+  const [movingId, setMovingId] = useState(null)
   const [draft, setDraft] = useState('')
   const inputRef = useRef(null)
 
@@ -94,6 +104,39 @@ export default function SessionList({ sessions, activeId, onSelect, onDelete, on
                   ? ` · ${Math.ceil(s.messageCount / 2)} ${t(lang, '轮', 'turns')}`
                   : ''}
               </div>
+              {onMove && workspaces.length > 1 && (
+                <button
+                  className="session-del"
+                  title={t(lang, '移入工作区', 'move to workspace')}
+                  style={{ right: 26 }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMovingId(movingId === s.id ? null : s.id)
+                  }}
+                >
+                  ⇄
+                </button>
+              )}
+              {movingId === s.id && (
+                <div className="ws-move-menu">
+                  {workspaces
+                    .filter((w) => w.id !== (s.workspaceId || 'default'))
+                    .map((w) => (
+                      <button
+                        key={w.id}
+                        className="dsh-ws-item"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onMove(s.id, w.id)
+                          setMovingId(null)
+                        }}
+                      >
+                        {w.name}
+                      </button>
+                    ))}
+                </div>
+              )}
+
               <button
                 className="session-del"
                 title={t(lang, '删除会话', 'delete session')}

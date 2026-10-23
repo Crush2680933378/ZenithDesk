@@ -6,7 +6,7 @@
 //  主进程用 Node 的 fetch 出去，再把增量通过 IPC 推给界面 —— 顺带能拿到
 //  完整响应头/状态码，也避免把 token 暴露在页面里。
 // ============================================================================
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const { spawn, execFileSync } = require('node:child_process')
@@ -14,6 +14,84 @@ const net = require('node:net')
 const { randomUUID } = require('node:crypto')
 
 const isSmoke = process.argv.includes('--smoke')
+
+// ---------------------------------------------------------------------------
+//  应用菜单：随界面语言重建（File/Edit 等标题也要能切换）
+// ---------------------------------------------------------------------------
+const MENU_LABELS = {
+  zh: {
+    file: '文件', edit: '编辑', view: '视图', window: '窗口', help: '帮助',
+    newSession: '新会话', settings: '设置…', quit: '退出',
+    undo: '撤销', redo: '重做', cut: '剪切', copy: '复制', paste: '粘贴', selectAll: '全选',
+    reload: '重新加载', forceReload: '强制重新加载', devtools: '开发者工具',
+    resetZoom: '实际大小', zoomIn: '放大', zoomOut: '缩小', fullscreen: '全屏',
+    minimize: '最小化', close: '关闭', about: '关于 ZenithDesk',
+  },
+  en: {
+    file: 'File', edit: 'Edit', view: 'View', window: 'Window', help: 'Help',
+    newSession: 'New Session', settings: 'Settings…', quit: 'Quit',
+    undo: 'Undo', redo: 'Redo', cut: 'Cut', copy: 'Copy', paste: 'Paste', selectAll: 'Select All',
+    reload: 'Reload', forceReload: 'Force Reload', devtools: 'Toggle DevTools',
+    resetZoom: 'Actual Size', zoomIn: 'Zoom In', zoomOut: 'Zoom Out', fullscreen: 'Toggle Full Screen',
+    minimize: 'Minimize', close: 'Close', about: 'About ZenithDesk',
+  },
+}
+
+function buildMenu(lang) {
+  const L = MENU_LABELS[lang === 'en' ? 'en' : 'zh']
+  const send = (action) => () => {
+    if (win && !win.isDestroyed()) win.webContents.send('menu:action', action)
+  }
+  const template = [
+    {
+      label: L.file,
+      submenu: [
+        { label: L.newSession, accelerator: 'CmdOrCtrl+N', click: send('new-session') },
+        { label: L.settings, accelerator: 'CmdOrCtrl+,', click: send('settings') },
+        { type: 'separator' },
+        { label: L.quit, accelerator: 'CmdOrCtrl+Q', role: 'quit' },
+      ],
+    },
+    {
+      label: L.edit,
+      submenu: [
+        { label: L.undo, role: 'undo' },
+        { label: L.redo, role: 'redo' },
+        { type: 'separator' },
+        { label: L.cut, role: 'cut' },
+        { label: L.copy, role: 'copy' },
+        { label: L.paste, role: 'paste' },
+        { label: L.selectAll, role: 'selectAll' },
+      ],
+    },
+    {
+      label: L.view,
+      submenu: [
+        { label: L.reload, role: 'reload' },
+        { label: L.forceReload, role: 'forceReload' },
+        { label: L.devtools, role: 'toggleDevTools' },
+        { type: 'separator' },
+        { label: L.resetZoom, role: 'resetZoom' },
+        { label: L.zoomIn, role: 'zoomIn' },
+        { label: L.zoomOut, role: 'zoomOut' },
+        { type: 'separator' },
+        { label: L.fullscreen, role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: L.window,
+      submenu: [
+        { label: L.minimize, role: 'minimize' },
+        { label: L.close, role: 'close' },
+      ],
+    },
+    {
+      label: L.help,
+      submenu: [{ label: L.about, click: send('about') }],
+    },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
 const isProbe = process.argv.includes('--probe')
 // 冒烟/无 GPU 环境：关掉硬件加速，避免窗口创建卡住
 if (isSmoke) app.disableHardwareAcceleration()
@@ -51,6 +129,9 @@ const DEFAULT_SETTINGS = {
   device: 0,
   thinkingDefault: 0, // 启动时的默认思考模式：-1 关 / 0 后端默认 / 1 开
   termLang: 'zh', // 术语语言：zh 中文为主 / en 英文旗标为主
+  theme: 'dark',  // dark | light
+  uiLang: 'zh',   // 界面语言（含应用菜单）zh | en
+  sidebarCollapsed: false, // 侧栏折叠为 56px 轨道
 }
 
 /// 某些编辑器/脚本写出的 JSON 带 UTF-8 BOM，JSON.parse 会直接抛异常 →
@@ -455,7 +536,17 @@ const DEFAULT_UI_STATE = {
 
 function readUiState() {
   const raw = readJsonFile(uiStateFile(), null)
-  return { ...DEFAULT_UI_STATE, ...(raw || {}) }
+  const merged = { ...DEFAULT_UI_STATE, ...(raw || {}) }
+  if (!raw) {
+    // 首次运行：把种子写下去，避免之后读到空
+    try {
+      fs.mkdirSync(path.dirname(uiStateFile()), { recursive: true })
+      fs.writeFileSync(uiStateFile(), JSON.stringify(merged, null, 2), 'utf8')
+    } catch {
+      /* 只读环境忽略 */
+    }
+  }
+  return merged
 }
 
 ipcMain.handle('ui:state', () => readUiState())
@@ -505,6 +596,7 @@ function summarize(s) {
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
     model: s.model || '',
+    workspaceId: s.workspaceId || 'default',
     messageCount: s.messages?.length || 0,
   }
 }
@@ -524,7 +616,9 @@ ipcMain.handle('sessions:get', (_e, id) => {
   return st.sessions.find((s) => s.id === id) || null
 })
 
-ipcMain.handle('sessions:create', (_e, title) => {
+ipcMain.handle('sessions:create', (_e, payload) => {
+  const title = typeof payload === 'string' ? payload : payload?.title
+  const workspaceId = (payload && payload.workspaceId) || readUiState().activeWorkspace || 'default'
   const st = loadStore()
   const s = {
     id: newId(),
@@ -532,6 +626,7 @@ ipcMain.handle('sessions:create', (_e, title) => {
     createdAt: nowIso(),
     updatedAt: nowIso(),
     model: '',
+    workspaceId,
     messages: [],
   }
   st.sessions.push(s)
@@ -582,6 +677,18 @@ ipcMain.handle('sessions:save', (_e, payload) => {
   s.updatedAt = nowIso()
   saveStore()
   return { ok: true, state: stateSnapshot() }
+})
+
+ipcMain.handle('sessions:move', (_e, payload) => {
+  const { id, workspaceId } = payload || {}
+  const st = loadStore()
+  const s = st.sessions.find((x) => x.id === id)
+  if (s && workspaceId) {
+    s.workspaceId = workspaceId
+    s.updatedAt = nowIso()
+    saveStore()
+  }
+  return stateSnapshot()
 })
 
 ipcMain.handle('sessions:delete', (_e, id) => {
@@ -713,7 +820,30 @@ ipcMain.handle('chat:start', async (event, payload) => {
 // ---------------------------------------------------------------------------
 //  启动
 // ---------------------------------------------------------------------------
+// 语言切换：重建菜单 + 记住选择
+// 窗口/视图动作（菜单栏用）
+ipcMain.handle('app:quit', () => { app.quit(); return { ok: true } })
+ipcMain.handle('app:reload', () => { win?.reload(); return { ok: true } })
+ipcMain.handle('app:devtools', () => { win?.webContents.toggleDevTools(); return { ok: true } })
+ipcMain.handle('app:zoom', (_e, dir) => {
+  if (!win) return { ok: false }
+  const cur = win.webContents.getZoomLevel()
+  win.webContents.setZoomLevel(dir === 0 ? 0 : cur + (dir > 0 ? 0.5 : -0.5))
+  return { ok: true, level: win.webContents.getZoomLevel() }
+})
+ipcMain.handle('app:fullscreen', () => {
+  if (!win) return { ok: false }
+  win.setFullScreen(!win.isFullScreen())
+  return { ok: true, full: win.isFullScreen() }
+})
+
+ipcMain.handle('app:set-lang', (_e, lang) => {
+  buildMenu(lang)
+  return { ok: true, lang }
+})
+
 app.whenReady().then(async () => {
+  buildMenu(readSettings().uiLang)
   createWindow()
 
   if (isSmoke) {
@@ -738,6 +868,19 @@ app.whenReady().then(async () => {
       setTimeout(doScroll, 2600)
       setTimeout(doScroll, 19000) // 截图前再滚一次（前面的重渲染可能重置过）
     }
+    const evalArg = process.argv.find((a) => a.startsWith('--demo-eval='))
+    if (evalArg) {
+      const js = evalArg.slice('--demo-eval='.length)
+      setTimeout(async () => {
+        try {
+          const out = await win.webContents.executeJavaScript(js)
+          fs.writeFileSync(path.join(app.getPath('temp'), 'zenith-eval.json'), JSON.stringify(out, null, 2), 'utf8')
+        } catch (e) {
+          fs.writeFileSync(path.join(app.getPath('temp'), 'zenith-eval.json'), JSON.stringify({ error: String(e) }, null, 2), 'utf8')
+        }
+      }, 2200)
+    }
+
     if (process.argv.includes('--demo-settings')) {
       setTimeout(() => {
         win.webContents

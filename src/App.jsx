@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatPanel from './components/ChatPanel.jsx'
-import SessionList from './components/SessionList.jsx'
+import MenuBar from './components/MenuBar.jsx'
 import PluginsPage from './components/PluginsPage.jsx'
+import SessionList from './components/SessionList.jsx'
 import SettingsDialog from './components/SettingsDialog.jsx'
 import TasksPage from './components/TasksPage.jsx'
 import TracePanel from './components/TracePanel.jsx'
-import { parseMetrics } from './metrics.js'
+import WorkspacePicker from './components/WorkspacePicker.jsx'
 import { normLang, t } from './i18n.js'
+import { parseMetrics } from './metrics.js'
 
 const api = window.zenith
 
-/// 落盘/比对只关心这些稳定字段（pending 之类的瞬时态不入库）
+/** 落盘/比对只关心稳定字段（pending 之类的瞬时态不入库） */
 const stable = (list) =>
   list
     .filter((m) => m && m.role)
@@ -28,20 +30,18 @@ const snapshotOf = (list) => JSON.stringify(stable(list))
 export default function App() {
   const [booted, setBooted] = useState(false)
   const [settings, setSettings] = useState(null)
-  const [urlDraft, setUrlDraft] = useState('')
   const [models, setModels] = useState([])
   const [status, setStatus] = useState(null)
   const [metrics, setMetrics] = useState({})
-  const [gpu, setGpu] = useState({ available: false })
   const [connError, setConnError] = useState('')
 
   const [sessions, setSessions] = useState([])
   const [activeId, setActiveId] = useState(null)
   const [messages, setMessages] = useState([])
   const [streamingId, setStreamingId] = useState(null)
-  const [tab, setTab] = useState('sessions') // 侧栏：sessions | status
+
   const [page, setPage] = useState('chat') // chat | trace | plugins | tasks
-  const [ui, setUi] = useState({ workspaces: [], plugins: [], tasks: [] })
+  const [ui, setUi] = useState({ workspaces: [], plugins: [], tasks: [], activeWorkspace: 'default' })
   const [showSettings, setShowSettings] = useState(false)
 
   const currentRef = useRef(null)
@@ -52,11 +52,16 @@ export default function App() {
     sessionsRef.current = sessions
   }, [sessions])
 
-  const lang = normLang(settings?.termLang)
+  /* ---------- 主题 ---------- */
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings?.theme === 'light' ? 'light' : 'dark'
+  }, [settings?.theme])
+
+  const lang = normLang(settings?.uiLang || settings?.termLang)
   const baseUrl = settings?.baseUrl || ''
   const connected = !connError && !!status
 
-  /* ---------- 启动：设置 + 会话 ---------- */
+  /* ---------- 状态应用 ---------- */
   const applyState = useCallback((state, id) => {
     if (state?.sessions) setSessions(state.sessions)
     if (id !== undefined) setActiveId(id)
@@ -68,13 +73,147 @@ export default function App() {
     loadedRef.current = { id, snapshot: snapshotOf(next) }
   }, [])
 
+  const patchUi = async (patch) => {
+    const next = await api.uiSet(patch)
+    if (next) setUi(next)
+  }
+
+  /* ---------- 动作 ---------- */
+  const saveSettings = async (patch) => {
+    const next = { ...settings, ...patch }
+    setSettings(next)
+    await api.setSettings(next)
+    if (patch.uiLang) api.setAppLang?.(patch.uiLang)
+    refresh(next.baseUrl)
+  }
+
+  const createWorkspace = async (name) => {
+    const id = `w${Date.now()}`
+    await patchUi({
+      workspaces: [...(ui.workspaces || []), { id, name, createdAt: new Date().toISOString() }],
+      activeWorkspace: id,
+    })
+  }
+
+  const selectSession = async (id) => {
+    if (id === activeId) return
+    if (streamingId) api.cancel(streamingId)
+    const full = await api.sessionsGet(id)
+    setActiveId(id)
+    loadMessages(id, full?.messages)
+    const next = await api.sessionsActivate(id)
+    applyState(next, id)
+  }
+
+  const switchWorkspace = async (id) => {
+    await patchUi({ activeWorkspace: id })
+    const first = sessionsRef.current.find((s) => (s.workspaceId || 'default') === id)
+    if (first) await selectSession(first.id)
+  }
+
+  const moveSession = async (id, workspaceId) => {
+    const next = await api.sessionsMove(id, workspaceId)
+    if (next) applyState(next)
+  }
+
+  const createSession = async () => {
+    if (streamingId) api.cancel(streamingId)
+    const created = await api.sessionsCreate({ workspaceId: ui.activeWorkspace || 'default' })
+    applyState(created.state, created.session.id)
+    loadMessages(created.session.id, [])
+    setPage('chat')
+  }
+
+  const deleteSession = async (id) => {
+    const cur = sessionsRef.current.find((s) => s.id === id)
+    if (!window.confirm(`${t(lang, '删除会话', 'Delete session')}「${cur?.title || ''}」?`)) return
+    if (streamingId) api.cancel(streamingId)
+    const next = await api.sessionsDelete(id)
+    applyState(next)
+    if (id === activeId) {
+      const nid = next.activeId || next.sessions[0]?.id || null
+      if (nid) {
+        const full = await api.sessionsGet(nid)
+        setActiveId(nid)
+        loadMessages(nid, full?.messages)
+      } else {
+        setActiveId(null)
+        loadMessages(null, [])
+      }
+    }
+  }
+
+  const renameSession = async (id, title) => {
+    const next = await api.sessionsRename(id, title)
+    applyState(next)
+  }
+
+  const send = async (text) => {
+    if (!settings) return
+    if (!activeId) {
+      const created = await api.sessionsCreate({ workspaceId: ui.activeWorkspace || 'default' })
+      applyState(created.state, created.session.id)
+      setActiveId(created.session.id)
+      loadMessages(created.session.id, [])
+    }
+
+    const id = crypto.randomUUID()
+    const model = settings.model || models[0]?.id || ''
+    const history = stable(messages)
+      .filter((m) => !m.error)
+      .map((m) => ({ role: m.role, content: m.content }))
+
+    setMessages((prev) => [
+      ...prev,
+      { id: `${id}-u`, role: 'user', content: text },
+      { id, role: 'assistant', content: '', reasoning: '', pending: true, model },
+    ])
+    setStreamingId(id)
+    currentRef.current = { id, startedAt: Date.now() }
+
+    const body = {
+      model: model || undefined,
+      messages: [...history, { role: 'user', content: text }],
+      stream: true,
+      temperature: Number(settings.temperature),
+      thinking: Number(settings.thinking),
+    }
+    if (Number(settings.maxTokens) > 0) body.max_tokens = Number(settings.maxTokens)
+    if (settings.systemPrompt?.trim()) {
+      body.messages.unshift({ role: 'system', content: settings.systemPrompt.trim() })
+    }
+
+    try {
+      await api.chat({ id, baseUrl, body })
+    } catch (e) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, pending: false, error: String(e) } : m)),
+      )
+      setStreamingId(null)
+    }
+  }
+
+  const cancel = () => {
+    if (streamingId) api.cancel(streamingId)
+  }
+
+  /* ---------- 菜单动作 ---------- */
+  useEffect(() => {
+    if (!api.onMenu) return undefined
+    return api.onMenu((action) => {
+      if (action === 'new-session') createSession()
+      if (action === 'settings' || action === 'about') setShowSettings(true)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /* ---------- 启动 ---------- */
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       const s = await api.getSettings()
       if (cancelled) return
       setSettings(s)
-      setUrlDraft(s.baseUrl)
 
       const u = await api.uiState()
       if (!cancelled && u) setUi(u)
@@ -103,20 +242,14 @@ export default function App() {
     }
   }, [applyState, loadMessages])
 
-  /* ---------- 网关轮询 ---------- */
+  /* ---------- 连接与指标轮询 ---------- */
   const refresh = useCallback(async (url) => {
     if (!url) return
     try {
-      const [m, st, mt, g] = await Promise.all([
-        api.models(url),
-        api.status(url),
-        api.metrics(url),
-        api.gpu().catch(() => ({ available: false })),
-      ])
+      const [m, st, mt] = await Promise.all([api.models(url), api.status(url), api.metrics(url)])
       setModels(m.data || [])
       setStatus(st)
       setMetrics(parseMetrics(mt))
-      setGpu(g || { available: false })
       setConnError('')
     } catch (e) {
       setConnError(String(e?.message || e))
@@ -124,7 +257,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!baseUrl) return
+    if (!baseUrl) return undefined
     refresh(baseUrl)
     const timer = setInterval(() => refresh(baseUrl), 3000)
     return () => clearInterval(timer)
@@ -178,9 +311,9 @@ export default function App() {
 
   /* ---------- 历史落盘（防抖 + 有变化才写） ---------- */
   useEffect(() => {
-    if (!booted || !activeId || streamingId) return
+    if (!booted || !activeId || streamingId) return undefined
     const snap = snapshotOf(messages)
-    if (snap === loadedRef.current.snapshot) return
+    if (snap === loadedRef.current.snapshot) return undefined
 
     const timer = setTimeout(async () => {
       const firstUser = messages.find((m) => m.role === 'user')
@@ -199,118 +332,10 @@ export default function App() {
     return () => clearTimeout(timer)
   }, [messages, activeId, booted, streamingId, settings?.model, applyState])
 
-  /* ---------- 动作 ---------- */
-  const saveSettings = async (patch) => {
-    const next = { ...settings, ...patch }
-    setSettings(next)
-    setUrlDraft(next.baseUrl)
-    await api.setSettings(next)
-    refresh(next.baseUrl)
-  }
-
-  const selectSession = async (id) => {
-    if (id === activeId) return
-    if (streamingId) api.cancel(streamingId)
-    const full = await api.sessionsGet(id)
-    setActiveId(id)
-    loadMessages(id, full?.messages)
-    const next = await api.sessionsActivate(id)
-    applyState(next, id)
-  }
-
-  const createSession = async () => {
-    if (streamingId) api.cancel(streamingId)
-    const created = await api.sessionsCreate()
-    applyState(created.state, created.session.id)
-    loadMessages(created.session.id, [])
-    setTab('sessions')
-  }
-
-  const deleteSession = async (id) => {
-    const cur = sessionsRef.current.find((s) => s.id === id)
-    if (!window.confirm(`删除会话「${cur?.title || '未命名'}」？历史不可恢复。`)) return
-    if (streamingId) api.cancel(streamingId)
-    const next = await api.sessionsDelete(id)
-    applyState(next)
-    if (id === activeId) {
-      const nid = next.activeId || next.sessions[0]?.id || null
-      if (nid) {
-        const full = await api.sessionsGet(nid)
-        setActiveId(nid)
-        loadMessages(nid, full?.messages)
-      } else {
-        setActiveId(null)
-        loadMessages(null, [])
-      }
-    }
-  }
-
-  const patchUi = async (patch) => {
-    const next = await api.uiSet(patch)
-    if (next) setUi(next)
-  }
-
-  const renameSession = async (id, title) => {
-    const next = await api.sessionsRename(id, title)
-    applyState(next)
-  }
-
-  const send = async (text) => {
-    if (!settings) return
-    if (!activeId) {
-      const created = await api.sessionsCreate()
-      applyState(created.state, created.session.id)
-      setActiveId(created.session.id)
-      loadMessages(created.session.id, [])
-    }
-
-    const id = crypto.randomUUID()
-    const model = settings.model || models[0]?.id || ''
-    const history = stable(messages)
-      .filter((m) => !m.error)
-      .map((m) => ({ role: m.role, content: m.content }))
-
-    setMessages((prev) => [
-      ...prev,
-      { id: `${id}-u`, role: 'user', content: text },
-      { id, role: 'assistant', content: '', reasoning: '', pending: true, model },
-    ])
-    setStreamingId(id)
-    currentRef.current = { id, startedAt: Date.now() }
-
-    const body = {
-      model: model || undefined,
-      messages: [...history, { role: 'user', content: text }],
-      stream: true,
-      temperature: Number(settings.temperature),
-
-      thinking: Number(settings.thinking),
-    }
-    // >0 才限制；0 = 不限制（不传该字段，由后端跑到 EOS / 上下文满）
-    if (Number(settings.maxTokens) > 0) body.max_tokens = Number(settings.maxTokens)
-    if (settings.systemPrompt?.trim()) {
-      body.messages.unshift({ role: 'system', content: settings.systemPrompt.trim() })
-    }
-
-    try {
-      await api.chat({ id, baseUrl, body })
-    } catch (e) {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, pending: false, error: String(e) } : m)),
-      )
-      setStreamingId(null)
-    }
-  }
-
-  const cancel = () => {
-    if (streamingId) api.cancel(streamingId)
-  }
-
-  // 冒烟/自动化钩子：让主进程能驱动真实发送与新建会话（仅测试用）
+  /* ---------- 冒烟钩子（自动化用） ---------- */
   useEffect(() => {
     window.__zenithDemo = send
     window.__zenithNewSession = createSession
-    window.__zenithSetTab = setTab
     window.__zenithSetView = setPage
     window.__zenithOpenSettings = () => setShowSettings(true)
     window.__zenithStartEngine = async () => {
@@ -324,79 +349,146 @@ export default function App() {
     return () => {
       delete window.__zenithDemo
       delete window.__zenithNewSession
+      delete window.__zenithSetView
+      delete window.__zenithOpenSettings
+      delete window.__zenithStartEngine
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [send])
 
   if (!settings || !booted) {
-    return <div className="boot">载入界面…</div>
+    return <div className="boot">{t('zh', '载入界面…', 'Loading…')}</div>
   }
 
   const versions = api.versions ? api.versions() : {}
-  const activeTitle = sessions.find((s) => s.id === activeId)?.title || '新会话'
+  const activeTitle = sessions.find((s) => s.id === activeId)?.title || t(lang, '新会话', 'New session')
+  const collapsed = !!settings?.sidebarCollapsed
+  const activeWorkspace = ui.activeWorkspace || 'default'
+  const wsSessions = sessions.filter((s) => (s.workspaceId || 'default') === activeWorkspace)
 
   return (
     <div className="app">
-      <aside className="sidebar dsh">
+      <MenuBar
+        lang={lang}
+        onNewSession={createSession}
+        onSettings={() => setShowSettings(true)}
+        onAbout={() => setShowSettings(true)}
+      />
+
+      <aside className={`sidebar dsh ${collapsed ? 'collapsed' : ''}`}>
         <div className="dsh-brand">
-          <span className="dsh-brand-mark">天顶</span>
-          <span className="dsh-brand-badge">ZENITHDESK</span>
+          <span className="dsh-brand-mark">{collapsed ? '天' : '天顶'}</span>
+          {!collapsed && <span className="dsh-brand-badge">ZENITHDESK</span>}
+          <button
+            className="dsh-collapse"
+            title={collapsed ? t(lang, '展开侧栏', 'expand') : t(lang, '收起侧栏', 'collapse')}
+            onClick={() => saveSettings({ sidebarCollapsed: !collapsed })}
+          >
+            {collapsed ? '»' : '«'}
+          </button>
         </div>
 
-        <button className="dsh-new" onClick={createSession}>
-          <span className="dsh-new-plus">＋</span>
-          {t(lang, '新会话', 'New session')}
-        </button>
+        <div
+          className="wide-only"
+          style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}
+        >
+          <button className="dsh-new" onClick={createSession}>
+            <span className="dsh-new-plus">＋</span>
+            {t(lang, '新会话', 'New session')}
+          </button>
 
-        <nav className="dsh-nav">
-          <button
-            className={`dsh-nav-item ${page === 'chat' || page === 'trace' ? 'active' : ''}`}
-            onClick={() => setPage('chat')}
-          >
-            {t(lang, '对话', 'Conversations')}
-            <span className="tab-count" style={{ marginLeft: 'auto' }}>{sessions.length}</span>
-          </button>
-          <button
-            className={`dsh-nav-item ${page === 'plugins' ? 'active' : ''}`}
-            onClick={() => setPage('plugins')}
-          >
-            {t(lang, '插件', 'Plugins')}
-            <span className="tab-count" style={{ marginLeft: 'auto' }}>
-              {ui.plugins?.filter((p) => p.enabled).length || 0}
-            </span>
-          </button>
-          <button
-            className={`dsh-nav-item ${page === 'tasks' ? 'active' : ''}`}
-            onClick={() => setPage('tasks')}
-          >
-            {t(lang, '自动化任务', 'Automation')}
-            <span className="tab-count" style={{ marginLeft: 'auto' }}>
-              {ui.tasks?.filter((x) => x.enabled).length || 0}
-            </span>
-          </button>
-        </nav>
+          <nav className="dsh-nav">
+            <button
+              className={`dsh-nav-item ${page === 'chat' || page === 'trace' ? 'active' : ''}`}
+              onClick={() => setPage('chat')}
+            >
+              {t(lang, '对话', 'Conversations')}
+              <span className="tab-count" style={{ marginLeft: 'auto' }}>{sessions.length}</span>
+            </button>
+            <button
+              className={`dsh-nav-item ${page === 'plugins' ? 'active' : ''}`}
+              onClick={() => setPage('plugins')}
+            >
+              {t(lang, '插件', 'Plugins')}
+              <span className="tab-count" style={{ marginLeft: 'auto' }}>
+                {ui.plugins?.filter((p) => p.enabled).length || 0}
+              </span>
+            </button>
+            <button
+              className={`dsh-nav-item ${page === 'tasks' ? 'active' : ''}`}
+              onClick={() => setPage('tasks')}
+            >
+              {t(lang, '自动化任务', 'Automation')}
+              <span className="tab-count" style={{ marginLeft: 'auto' }}>
+                {ui.tasks?.filter((x) => x.enabled).length || 0}
+              </span>
+            </button>
+          </nav>
 
-        <div className="dsh-workspace">
-          <div className="dsh-section">
-            {ui.workspaces?.find((w) => w.id === ui.activeWorkspace)?.name ||
-              t(lang, '工作区', 'Workspace')}
-          </div>
-          <SessionList
-            sessions={sessions}
-            activeId={activeId}
-            onSelect={(id) => {
-              selectSession(id)
-              setPage('chat')
-            }}
-            onCreate={createSession}
-            onDelete={deleteSession}
-            onRename={renameSession}
+          <WorkspacePicker
+            workspaces={ui.workspaces || []}
+            activeId={activeWorkspace}
+            onSelect={switchWorkspace}
+            onCreate={createWorkspace}
             lang={lang}
           />
+
+          <div className="dsh-workspace">
+            <SessionList
+              sessions={wsSessions}
+              activeId={activeId}
+              workspaces={ui.workspaces || []}
+              onMove={moveSession}
+              onSelect={(id) => {
+                selectSession(id)
+                setPage('chat')
+              }}
+              onCreate={createSession}
+              onDelete={deleteSession}
+              onRename={renameSession}
+              lang={lang}
+            />
+          </div>
+
+          <div className="dsh-sidebar-foot">
+            <button className="dsh-nav-item" onClick={() => setShowSettings(true)}>
+              ⚙ {t(lang, '设置', 'Settings')}
+            </button>
+          </div>
         </div>
 
-        <div className="dsh-sidebar-foot">
-          <button className="dsh-nav-item" onClick={() => setShowSettings(true)}>
-            ⚙ {t(lang, '设置', 'Settings')}
+        <div className="rail-only dsh-rail">
+          <button className="dsh-rail-btn" title={t(lang, '新会话', 'New')} onClick={createSession}>
+            ＋
+          </button>
+          <button
+            className={`dsh-rail-btn ${page === 'chat' || page === 'trace' ? 'active' : ''}`}
+            title={t(lang, '对话', 'Chat')}
+            onClick={() => setPage('chat')}
+          >
+            ▤
+          </button>
+          <button
+            className={`dsh-rail-btn ${page === 'plugins' ? 'active' : ''}`}
+            title={t(lang, '插件', 'Plugins')}
+            onClick={() => setPage('plugins')}
+          >
+            ◈
+          </button>
+          <button
+            className={`dsh-rail-btn ${page === 'tasks' ? 'active' : ''}`}
+            title={t(lang, '自动化任务', 'Automation')}
+            onClick={() => setPage('tasks')}
+          >
+            ◷
+          </button>
+          <div style={{ flex: 1 }} />
+          <button
+            className="dsh-rail-btn"
+            title={t(lang, '设置', 'Settings')}
+            onClick={() => setShowSettings(true)}
+          >
+            ⚙
           </button>
         </div>
       </aside>
@@ -467,6 +559,7 @@ export default function App() {
           onClose={() => setShowSettings(false)}
           connected={connected}
           connError={connError}
+          versions={versions}
         />
       )}
     </div>
