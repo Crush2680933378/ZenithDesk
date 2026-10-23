@@ -54,6 +54,22 @@ export default function StatusPanel({ status, metrics, models, connected, lang: 
       <Row lang={lang} label="解码" code="decode tps" value={decode ? fmtNum(decode) + ' tok/s' : '—'} />
       <Row lang={lang} label="首 token" code="ttft" value={fmtMs(pick(metrics, 'zenith_ai_ttft_ms'))} />
 
+      <div className="panel-sub">{t(lang, '上下文 / KV', 'context / KV')}</div>
+      <Row
+        lang={lang}
+        label="KV 占用"
+        code="kv used"
+        value={
+          engine?.kv_capacity_tokens
+            ? `${Math.round(engine.kv_used_tokens / 1024)}k / ${Math.round(
+                engine.kv_capacity_tokens / 1024,
+              )}k（${(Number(engine.kv_percent) || 0).toFixed(1)}%）`
+            : engine?.last_context_tokens
+              ? `${engine.last_context_tokens} token（容量未上报）`
+              : '—'
+        }
+      />
+
       <div className="panel-sub">{t(lang, '累计', 'totals')}</div>
       <Row lang={lang} label="请求数" code="requests" value={fmtNum(pick(metrics, 'zenith_ai_requests_total'))} />
       <Row

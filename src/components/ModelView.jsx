@@ -319,6 +319,11 @@ export default function ModelView({ settings, onSave, onStarted }) {
   const acceptRate = eng.draft_total > 0 ? (eng.draft_accepted / eng.draft_total) * 100 : null
   const modelName = status?.models?.[0] || (settings.modelPath || '').split(/[\\/]/).pop() || '—'
   const vramPct = gpu.available && gpu.totalMB ? (gpu.usedMB / gpu.totalMB) * 100 : 0
+  // KV / 上下文占用（ABI v3；老插件只有 last_context_tokens）
+  const kvUsed = Number(eng.kv_used_tokens) || 0
+  const kvCap = Number(eng.kv_capacity_tokens) || 0
+  const kvPct = kvCap > 0 ? (kvUsed / kvCap) * 100 : 0
+  const lastCtx = Number(eng.last_context_tokens) || 0
 
   return (
     <LANG.Provider value={lang}>
@@ -573,6 +578,34 @@ export default function ModelView({ settings, onSave, onStarted }) {
             <div className="mv-card-foot">
               峰值 {tpsHistory.length ? Math.max(...tpsHistory).toFixed(1) : '—'} tok/s
             </div>
+          </div>
+
+          <div className="mv-card">
+            <div className="mv-card-title">上下文 / KV 占用</div>
+            {kvCap > 0 ? (
+              <>
+                <div className="bar">
+                  <div
+                    className={`bar-fill ${kvPct > 85 ? 'bar-warn' : ''}`}
+                    style={{ width: `${Math.min(100, kvPct)}%` }}
+                  />
+                </div>
+                <div className="gpu-line">
+                  {kvUsed.toLocaleString()} / {kvCap.toLocaleString()} token
+                  <span className="muted">（{kvPct.toFixed(1)}%）</span>
+                </div>
+                <div className="gpu-line muted">
+                  最近一次请求占用 {lastCtx.toLocaleString()} token
+                  {eng.reused_tokens ? ` · 前缀复用 ${Number(eng.reused_tokens).toLocaleString()}` : ''}
+                </div>
+              </>
+            ) : (
+              <div className="muted">
+                {lastCtx > 0
+                  ? `最近一次请求占用 ${lastCtx} token（该插件未上报 KV 容量）`
+                  : '暂无数据（引擎未上报）'}
+              </div>
+            )}
           </div>
 
           <div className="mv-card">
