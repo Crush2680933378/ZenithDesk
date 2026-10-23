@@ -145,15 +145,35 @@ export default function ChatPanel({
             <option value={1}>{t(lang, '思考：开', 'think on')}</option>
           </select>
 
-          <input
-            className="input input-sm"
-            type="number"
-            min="1"
-            step="64"
-            value={settings?.maxTokens ?? 1024}
-            onChange={(e) => onSave?.({ maxTokens: Number(e.target.value) })}
-            title={t(lang, '本次最大输出 token', 'max output tokens')}
-          />
+          {(() => {
+            const unlimited = !(Number(settings?.maxTokens) > 0)
+            return (
+              <>
+                <input
+                  className="input input-sm"
+                  type="number"
+                  min="1"
+                  step="64"
+                  placeholder="∞"
+                  disabled={unlimited}
+                  value={unlimited ? '' : Number(settings.maxTokens)}
+                  onChange={(e) => onSave?.({ maxTokens: Number(e.target.value) })}
+                  title={t(
+                    lang,
+                    '本次最大输出 token（留空 = 不限制，引擎在 EOS 或上下文满时停）',
+                    'max output tokens (empty = unlimited; stops at EOS or context full)',
+                  )}
+                />
+                <button
+                  className={`btn btn-mini ${unlimited ? 'btn-on' : ''}`}
+                  onClick={() => onSave?.({ maxTokens: unlimited ? 1024 : 0 })}
+                  title={t(lang, '切换「不限制输出长度」', 'toggle unlimited output')}
+                >
+                  ∞
+                </button>
+              </>
+            )
+          })()}
 
           <input
             className="input input-sm"

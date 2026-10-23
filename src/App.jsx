@@ -271,9 +271,11 @@ export default function App() {
       messages: [...history, { role: 'user', content: text }],
       stream: true,
       temperature: Number(settings.temperature),
-      max_tokens: Number(settings.maxTokens),
+
       thinking: Number(settings.thinking),
     }
+    // >0 才限制；0 = 不限制（不传该字段，由后端跑到 EOS / 上下文满）
+    if (Number(settings.maxTokens) > 0) body.max_tokens = Number(settings.maxTokens)
     if (settings.systemPrompt?.trim()) {
       body.messages.unshift({ role: 'system', content: settings.systemPrompt.trim() })
     }

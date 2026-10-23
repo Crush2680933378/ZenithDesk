@@ -28,7 +28,7 @@ const DEFAULT_SETTINGS = {
   baseUrl: 'http://127.0.0.1:8090',
   model: '',
   temperature: 0.7,
-  maxTokens: 1024,
+  maxTokens: 0, // 0 = 不限制（引擎在 EOS / 上下文满时自然停）
   thinking: 0, // -1 关 / 0 默认 / 1 开
   systemPrompt: '',
   // 本地引擎（网关）启动参数

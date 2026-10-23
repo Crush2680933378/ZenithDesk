@@ -625,3 +625,7 @@ body {
 .chat-status { flex-wrap: wrap; white-space: normal; overflow-x: visible; row-gap: 4px; }
 .composer-row select[title*="思考"] { min-width: 104px; }
 .composer-row .input-sm { width: 84px; }
+
+/* ∞ 开关（不限制输出） */
+.btn-on { border-color: var(--accent); color: #cfe6ff; background: #16202c; }
+.composer-row .btn-mini { min-width: 34px; }
