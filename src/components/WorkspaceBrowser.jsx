@@ -29,6 +29,7 @@ export default function WorkspaceBrowser({
   onDelete,
   onRename,
   onMove,
+  onReorder,
   lang: langProp,
 }) {
   const lang = normLang(langProp)
@@ -43,6 +44,7 @@ export default function WorkspaceBrowser({
   const [orderBy, setOrderBy] = useState('updated') // updated | manual
   const [opts, setOpts] = useState(false)
   const [expanded, setExpanded] = useState({})
+  const [dragId, setDragId] = useState(null)
 
   const COMMON = 5 // 每个工作区先显示条数
 
@@ -58,6 +60,8 @@ export default function WorkspaceBrowser({
     }
     if (orderBy === 'updated') {
       list = [...list].sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
+    } else {
+      list = [...list].sort((a, b) => (a.order || 0) - (b.order || 0))
     }
     return list
   }, [sessions, query, orderBy])
@@ -73,7 +77,26 @@ export default function WorkspaceBrowser({
   const renderRow = (s) => (
     <div
       key={s.id}
-      className={`dsh-session ${s.id === activeId ? 'active' : ''}`}
+      className={`dsh-session ${s.id === activeId ? 'active' : ''} ${orderBy === 'manual' ? 'draggable' : ''}`}
+      draggable={orderBy === 'manual'}
+      onDragStart={() => setDragId(s.id)}
+      onDragOver={(e) => {
+        if (orderBy === 'manual') e.preventDefault()
+      }}
+      onDrop={(e) => {
+        if (orderBy !== 'manual' || !dragId || dragId === s.id) return
+        e.preventDefault()
+        e.stopPropagation()
+        const wsItems = filtered.filter((x) => (x.workspaceId || 'default') === (s.workspaceId || 'default'))
+        const ids = wsItems.map((x) => x.id)
+        const from = ids.indexOf(dragId)
+        const to = ids.indexOf(s.id)
+        if (from < 0 || to < 0) return
+        ids.splice(to, 0, ids.splice(from, 1)[0])
+        onReorder?.(ids)
+        setDragId(null)
+      }}
+      onDragEnd={() => setDragId(null)}
       onClick={() => onSelect(s.id)}
       onDoubleClick={() => {
         setEditing(s.id)

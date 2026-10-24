@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('zenith', {
   sessionsSave: (payload) => ipcRenderer.invoke('sessions:save', payload),
   sessionsDelete: (id) => ipcRenderer.invoke('sessions:delete', id),
   sessionsMove: (id, workspaceId) => ipcRenderer.invoke('sessions:move', { id, workspaceId }),
+  sessionsReorder: (ids) => ipcRenderer.invoke('sessions:reorder', ids),
 
   // 本地引擎（把 Zenith 网关作为子进程拉起）
   gatewayStart: (cfg) => ipcRenderer.invoke('gateway:start', cfg),

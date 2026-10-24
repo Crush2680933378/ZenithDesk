@@ -1559,3 +1559,8 @@ html[data-theme='light'] .mode-chip { background: rgb(0 0 0 / 4%); }
   border: 1px solid var(--border); border-radius: 999px;
 }
 .trace-collapsed { padding: 6px 10px; font-size: 11px; color: #6f7479; }
+
+/* 手动排序：可拖拽会话 */
+.dsh-session.draggable { cursor: grab; }
+.dsh-session.draggable:active { cursor: grabbing; }
+.dsh-session.draggable:hover { outline: 1px dashed var(--border); }

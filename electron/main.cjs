@@ -600,6 +600,7 @@ function summarize(s) {
     updatedAt: s.updatedAt,
     model: s.model || '',
     workspaceId: s.workspaceId || 'default',
+    order: s.order || 0,
     messageCount: s.messages?.length || 0,
   }
 }
@@ -680,6 +681,17 @@ ipcMain.handle('sessions:save', (_e, payload) => {
   s.updatedAt = nowIso()
   saveStore()
   return { ok: true, state: stateSnapshot() }
+})
+
+ipcMain.handle('sessions:reorder', (_e, ids) => {
+  const st = loadStore()
+  const list = Array.isArray(ids) ? ids : []
+  list.forEach((id, i) => {
+    const s = st.sessions.find((x) => x.id === id)
+    if (s) s.order = i
+  })
+  saveStore()
+  return stateSnapshot()
 })
 
 ipcMain.handle('sessions:move', (_e, payload) => {

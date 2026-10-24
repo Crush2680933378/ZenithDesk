@@ -431,16 +431,18 @@ export default function App() {
   const ctxTokens = Number(status?.engine?.last_context_tokens) || 0
   const ctxCap = Number(status?.engine?.kv_capacity_tokens) || 0
   const ctxPercent = ctxCap > 0 ? (ctxTokens / ctxCap) * 100 : 0
-  const sysTokens = settings?.systemPrompt ? Math.round(settings.systemPrompt.length / 4) : 0
-  const msgTokens = Math.max(0, ctxTokens - sysTokens)
-  const ctxBreakdown = ctxCap
+  // 优先用网关回报的精确构成（/zenith/ai/status 的 context_breakdown）
+  const bd = status?.context_breakdown
+  const ctxLines = bd
     ? [
-        `${t(lang, '上下文已用', 'context used')} ${ctxTokens} / ${ctxCap} tok`,
-        `${t(lang, '系统提示词', 'system')} ${sysTokens}`,
-        `${t(lang, '对话消息', 'messages')} ${msgTokens}`,
-        `${t(lang, '工具', 'tools')} 0`,
-      ].join('\n')
-    : ''
+        `${t(lang, '上下文已用', 'context used')} ${bd.prompt_tokens} / ${ctxCap} tok`,
+        `${t(lang, '系统提示词', 'system')} ${bd.system_tokens}`,
+        `${t(lang, '对话消息', 'messages')} ${bd.message_tokens}`,
+        `${t(lang, '工具', 'tools')} ${bd.tool_tokens}`,
+        bd.images ? `${t(lang, '图片', 'images')} ${bd.images}` : '',
+      ].filter(Boolean)
+    : []
+  const ctxBreakdown = ctxLines.join('\n')
 
   const wsSessions = sessions.filter((s) => (s.workspaceId || 'default') === activeWorkspace)
 
@@ -518,6 +520,10 @@ export default function App() {
               onDelete={deleteSession}
               onRename={renameSession}
               onMove={moveSession}
+              onReorder={async (ids) => {
+                const next = await api.sessionsReorder(ids)
+                if (next) applyState(next)
+              }}
               lang={lang}
             />
           </div>
