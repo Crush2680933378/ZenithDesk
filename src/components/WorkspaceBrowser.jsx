@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { normLang, t } from '../i18n.js'
 
 function relTime(iso, lang) {
@@ -15,8 +15,8 @@ function relTime(iso, lang) {
 }
 
 /**
- * 工作区浏览器（对齐 DSH 的 ui-workspace）：侧栏直接按工作区分组列出会话，
- * 组可折叠；会话可重命名 / 删除 / 移入其它工作区。
+ * 工作区浏览器（对齐 DSH ui-workspace 的最新版）：搜索、分组方式、排序、
+ * 工作区/会话两个段落、展开其余会话。
  */
 export default function WorkspaceBrowser({
   workspaces,
@@ -38,6 +38,29 @@ export default function WorkspaceBrowser({
   const [movingId, setMovingId] = useState(null)
   const [newWs, setNewWs] = useState(false)
   const [wsName, setWsName] = useState('')
+  const [query, setQuery] = useState('')
+  const [groupBy, setGroupBy] = useState('workspace') // workspace | flat
+  const [orderBy, setOrderBy] = useState('updated') // updated | manual
+  const [opts, setOpts] = useState(false)
+  const [expanded, setExpanded] = useState({})
+
+  const COMMON = 5 // 每个工作区先显示条数
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    let list = sessions
+    if (q) {
+      list = list.filter(
+        (s) =>
+          (s.title || '').toLowerCase().includes(q) ||
+          (s.preview || '').toLowerCase().includes(q),
+      )
+    }
+    if (orderBy === 'updated') {
+      list = [...list].sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
+    }
+    return list
+  }, [sessions, query, orderBy])
 
   const toggle = (id) => setCollapsedWs((m) => ({ ...m, [id]: !m[id] }))
 
@@ -47,121 +70,210 @@ export default function WorkspaceBrowser({
     setEditing(null)
   }
 
-  return (
-    <div className="ws-browser">
-      {workspaces.map((w) => {
-        const items = sessions.filter((s) => (s.workspaceId || 'default') === w.id)
-        const isCollapsed = !!collapsedWs[w.id]
-        const isActive = w.id === activeWorkspace
-        return (
-          <div key={w.id} className={`ws-group ${isActive ? 'active' : ''}`}>
-            <div
-              className="ws-head"
-              onClick={() => onSwitchWorkspace(w.id)}
-              title={t(lang, '切换到此工作区', 'switch to this workspace')}
-            >
+  const renderRow = (s) => (
+    <div
+      key={s.id}
+      className={`dsh-session ${s.id === activeId ? 'active' : ''}`}
+      onClick={() => onSelect(s.id)}
+      onDoubleClick={() => {
+        setEditing(s.id)
+        setDraft(s.title)
+      }}
+      title={t(lang, '双击重命名', 'double-click to rename')}
+    >
+      {editing === s.id ? (
+        <input
+          className="session-input"
+          value={draft}
+          autoFocus
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => commitRename(s.id)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitRename(s.id)
+            if (e.key === 'Escape') setEditing(null)
+          }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <div className="dsh-session-title">{s.title || t(lang, '未命名', 'untitled')}</div>
+      )}
+      <div className="dsh-session-meta">
+        {relTime(s.updatedAt, lang)}
+        {s.messageCount ? ` · ${Math.ceil(s.messageCount / 2)} ${t(lang, '轮', 'turns')}` : ''}
+      </div>
+
+      {workspaces.length > 1 && (
+        <button
+          className="session-del"
+          style={{ right: 26 }}
+          title={t(lang, '移入工作区', 'move to workspace')}
+          onClick={(e) => {
+            e.stopPropagation()
+            setMovingId(movingId === s.id ? null : s.id)
+          }}
+        >
+          ⇄
+        </button>
+      )}
+      <button
+        className="session-del"
+        title={t(lang, '删除会话', 'delete session')}
+        onClick={(e) => {
+          e.stopPropagation()
+          onDelete(s.id)
+        }}
+      >
+        ×
+      </button>
+
+      {movingId === s.id && (
+        <div className="ws-move-menu">
+          {workspaces
+            .filter((x) => x.id !== (s.workspaceId || 'default'))
+            .map((x) => (
               <button
-                className="ws-caret"
+                key={x.id}
+                className="dsh-ws-item"
                 onClick={(e) => {
                   e.stopPropagation()
-                  toggle(w.id)
+                  onMove(s.id, x.id)
+                  setMovingId(null)
                 }}
               >
-                {isCollapsed ? '▸' : '▾'}
+                {x.name}
               </button>
-              <span className="ws-name">{w.name}</span>
-              <span className="ws-count">{items.length}</span>
-            </div>
+            ))}
+        </div>
+      )}
+    </div>
+  )
 
-            {!isCollapsed && (
-              <div className="ws-items">
-                {items.length === 0 && (
-                  <div className="ws-empty">{t(lang, '暂无会话', 'no sessions')}</div>
-                )}
-                {items.map((s) => (
-                  <div
-                    key={s.id}
-                    className={`dsh-session ${s.id === activeId ? 'active' : ''}`}
-                    onClick={() => onSelect(s.id)}
-                    onDoubleClick={() => {
-                      setEditing(s.id)
-                      setDraft(s.title)
+  return (
+    <div className="ws-browser">
+      {/* 搜索 + 视图选项 */}
+      <div className="ws-tools">
+        <input
+          className="ws-search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t(lang, '搜索会话…', 'Search sessions…')}
+          aria-label={t(lang, '搜索会话', 'Search sessions')}
+        />
+        {query && (
+          <button className="ws-clear" title={t(lang, '清除搜索', 'clear search')} onClick={() => setQuery('')}>
+            ×
+          </button>
+        )}
+        <button
+          className="ws-opt"
+          title={t(lang, '视图选项', 'view options')}
+          onClick={() => setOpts((v) => !v)}
+        >
+          ⋯
+        </button>
+      </div>
+
+      {opts && (
+        <div className="ws-options">
+          <div className="ws-options-label">{t(lang, '分组方式', 'Group by')}</div>
+          <div className="seg">
+            <button
+              className={`seg-btn ${groupBy === 'workspace' ? 'active' : ''}`}
+              onClick={() => setGroupBy('workspace')}
+            >
+              {t(lang, '按工作区', 'Workspace')}
+            </button>
+            <button
+              className={`seg-btn ${groupBy === 'flat' ? 'active' : ''}`}
+              onClick={() => setGroupBy('flat')}
+            >
+              {t(lang, '单列表', 'Flat')}
+            </button>
+          </div>
+          <div className="ws-options-label">{t(lang, '排序方式', 'Order by')}</div>
+          <div className="seg">
+            <button
+              className={`seg-btn ${orderBy === 'updated' ? 'active' : ''}`}
+              onClick={() => setOrderBy('updated')}
+            >
+              {t(lang, '最近更新', 'Updated')}
+            </button>
+            <button
+              className={`seg-btn ${orderBy === 'manual' ? 'active' : ''}`}
+              onClick={() => setOrderBy('manual')}
+            >
+              {t(lang, '手动排序', 'Manual')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {query && (
+        <div className="dsh-section">
+          {t(lang, '搜索结果', 'Results')} · {filtered.length}
+        </div>
+      )}
+
+      {groupBy === 'flat' ? (
+        <div className="ws-items">
+          {filtered.length === 0 && (
+            <div className="ws-empty">{query ? t(lang, '无匹配结果', 'no matches') : t(lang, '暂无会话', 'no sessions')}</div>
+          )}
+          {filtered.map(renderRow)}
+        </div>
+      ) : (
+        <>
+          {workspaces.map((w) => {
+            const items = filtered.filter((s) => (s.workspaceId || 'default') === w.id)
+            if (query && items.length === 0) return null
+            const isCollapsed = !!collapsedWs[w.id]
+            const isActive = w.id === activeWorkspace
+            const open = !!expanded[w.id]
+            const shown = open ? items : items.slice(0, COMMON)
+            return (
+              <div key={w.id} className={`ws-group ${isActive ? 'active' : ''}`}>
+                <div
+                  className="ws-head"
+                  onClick={() => onSwitchWorkspace(w.id)}
+                  title={t(lang, '切换到此工作区', 'switch to this workspace')}
+                >
+                  <button
+                    className="ws-caret"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggle(w.id)
                     }}
-                    title={t(lang, '双击重命名', 'double-click to rename')}
                   >
-                    {editing === s.id ? (
-                      <input
-                        className="session-input"
-                        value={draft}
-                        autoFocus
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => commitRename(s.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') commitRename(s.id)
-                          if (e.key === 'Escape') setEditing(null)
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <div className="dsh-session-title">{s.title || t(lang, '未命名', 'untitled')}</div>
-                    )}
-                    <div className="dsh-session-meta">
-                      {relTime(s.updatedAt, lang)}
-                      {s.messageCount
-                        ? ` · ${Math.ceil(s.messageCount / 2)} ${t(lang, '轮', 'turns')}`
-                        : ''}
-                    </div>
+                    {isCollapsed ? '▸' : '▾'}
+                  </button>
+                  <span className="ws-name">{w.name}</span>
+                  <span className="ws-count">{items.length}</span>
+                </div>
 
-                    {workspaces.length > 1 && (
+                {!isCollapsed && (
+                  <div className="ws-items">
+                    {items.length === 0 && <div className="ws-empty">{t(lang, '暂无会话', 'no sessions')}</div>}
+                    {shown.map(renderRow)}
+                    {items.length > COMMON && (
                       <button
-                        className="session-del"
-                        style={{ right: 26 }}
-                        title={t(lang, '移入工作区', 'move to workspace')}
+                        className="ws-more"
                         onClick={(e) => {
                           e.stopPropagation()
-                          setMovingId(movingId === s.id ? null : s.id)
+                          setExpanded((m) => ({ ...m, [w.id]: !open }))
                         }}
                       >
-                        ⇄
+                        {open
+                          ? t(lang, '收起', 'collapse')
+                          : t(lang, `展开其余 ${items.length - COMMON} 个会话`, `show ${items.length - COMMON} more`)}
                       </button>
                     )}
-                    <button
-                      className="session-del"
-                      title={t(lang, '删除会话', 'delete session')}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDelete(s.id)
-                      }}
-                    >
-                      ×
-                    </button>
-
-                    {movingId === s.id && (
-                      <div className="ws-move-menu">
-                        {workspaces
-                          .filter((x) => x.id !== (s.workspaceId || 'default'))
-                          .map((x) => (
-                            <button
-                              key={x.id}
-                              className="dsh-ws-item"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onMove(s.id, x.id)
-                                setMovingId(null)
-                              }}
-                            >
-                              {x.name}
-                            </button>
-                          ))}
-                      </div>
-                    )}
                   </div>
-                ))}
+                )}
               </div>
-            )}
-          </div>
-        )
-      })}
+            )
+          })}
+        </>
+      )}
 
       <div className="ws-new">
         {newWs ? (
@@ -191,7 +303,7 @@ export default function WorkspaceBrowser({
           />
         ) : (
           <button className="dsh-nav-item" onClick={() => setNewWs(true)}>
-            ＋ {t(lang, '新工作区', 'New workspace')}
+            ＋ {t(lang, '添加工作区', 'Add workspace')}
           </button>
         )}
       </div>

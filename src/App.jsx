@@ -317,6 +317,8 @@ export default function App() {
                   completion: usage?.completion_tokens ?? 0,
                   finish: finishReason || 'stop',
                   elapsed,
+                  tps: elapsed > 0 ? ((usage?.completion_tokens ?? 0) / elapsed) * 1000 : 0,
+                  ttft: Number(status?.engine?.last_ttft_ms) || 0,
                 },
               }
             : m,
@@ -395,6 +397,13 @@ export default function App() {
   const collapsed = collapsedNow
   const wide = !collapsed || !settled
   const activeWorkspace = ui.activeWorkspace || 'default'
+  const ctxTokens = Number(status?.engine?.last_context_tokens) || 0
+  const ctxCap = Number(status?.engine?.kv_capacity_tokens) || 0
+  const ctxPercent = ctxCap > 0 ? (ctxTokens / ctxCap) * 100 : 0
+  const ctxBreakdown = ctxCap
+    ? `${t(lang, '上下文已用', 'context used')} ${ctxTokens} / ${ctxCap} tok`
+    : ''
+
   const wsSessions = sessions.filter((s) => (s.workspaceId || 'default') === activeWorkspace)
 
   return (
@@ -575,6 +584,14 @@ export default function App() {
             disabled={!connected}
             lang={lang}
             onOpenSettings={() => setShowSettings(true)}
+            onCommand={(cmd) => {
+              if (cmd === 'new') createSession()
+              if (cmd === 'trace') setPage('trace')
+            }}
+            context={{
+              percent: ctxPercent,
+              breakdown: ctxBreakdown,
+            }}
           />
         )}
       </main>
