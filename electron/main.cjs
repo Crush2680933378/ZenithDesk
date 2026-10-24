@@ -132,6 +132,9 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',  // dark | light
   uiLang: 'zh',   // 界面语言（含应用菜单）zh | en
   sidebarCollapsed: false, // 侧栏折叠为 56px 轨道
+  enterBehavior: 'queue',  // 繁忙时 Enter：queue 排队 / steer 插话
+  accessMode: 'ask',      // ask 标准 / full 完全访问 / read 只读
+  accessFullAck: false,   // 是否已确认 Full access 风险
 }
 
 /// 某些编辑器/脚本写出的 JSON 带 UTF-8 BOM，JSON.parse 会直接抛异常 →

@@ -44,6 +44,7 @@ export default function App() {
   const [page, setPage] = useState('chat') // chat | trace | plugins | tasks
   const [ui, setUi] = useState({ workspaces: [], plugins: [], tasks: [], activeWorkspace: 'default' })
   const [showSettings, setShowSettings] = useState(false)
+  const [queue, setQueue] = useState([])
 
   const currentRef = useRef(null)
   const loadedRef = useRef({ id: null, snapshot: '[]' })
@@ -172,8 +173,19 @@ export default function App() {
     applyState(next)
   }
 
-  const send = async (text) => {
+  const send = async (text, images = [], opts = {}) => {
     if (!settings) return
+
+    // 繁忙中：排队 or 插话
+    if (streamingId) {
+      if (opts.steer) {
+        api.cancel(streamingId)
+      } else {
+        setQueue((q) => [...q, { text, images }])
+        return
+      }
+    }
+
     if (!activeId) {
       const created = await api.sessionsCreate({ workspaceId: ui.activeWorkspace || 'default' })
       applyState(created.state, created.session.id)
@@ -195,9 +207,18 @@ export default function App() {
     setStreamingId(id)
     currentRef.current = { id, startedAt: Date.now() }
 
+    const hasImages = (images || []).length > 0 && vision
+    const userContent = hasImages
+      ? [
+          { type: 'text', text },
+          ...images.map((img) => ({ type: 'image_url', image_url: { url: img.url } })),
+        ]
+      : text
+
     const body = {
       model: model || undefined,
-      messages: [...history, { role: 'user', content: text }],
+      messages: [...history, { role: 'user', content: userContent }],
+      access_mode: settings.accessMode || 'ask',
       stream: true,
       temperature: Number(settings.temperature),
       thinking: Number(settings.thinking),
@@ -216,6 +237,15 @@ export default function App() {
       setStreamingId(null)
     }
   }
+
+  // 空闲且有排队 → 自动发下一条
+  useEffect(() => {
+    if (streamingId || queue.length === 0) return
+    const [head, ...rest] = queue
+    setQueue(rest)
+    if (head) send(head.text, head.images)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamingId, queue])
 
   const cancel = () => {
     if (streamingId) api.cancel(streamingId)
@@ -397,11 +427,19 @@ export default function App() {
   const collapsed = collapsedNow
   const wide = !collapsed || !settled
   const activeWorkspace = ui.activeWorkspace || 'default'
+  const vision = !!(models[0]?.zenith_meta?.capabilities?.vision)
   const ctxTokens = Number(status?.engine?.last_context_tokens) || 0
   const ctxCap = Number(status?.engine?.kv_capacity_tokens) || 0
   const ctxPercent = ctxCap > 0 ? (ctxTokens / ctxCap) * 100 : 0
+  const sysTokens = settings?.systemPrompt ? Math.round(settings.systemPrompt.length / 4) : 0
+  const msgTokens = Math.max(0, ctxTokens - sysTokens)
   const ctxBreakdown = ctxCap
-    ? `${t(lang, '上下文已用', 'context used')} ${ctxTokens} / ${ctxCap} tok`
+    ? [
+        `${t(lang, '上下文已用', 'context used')} ${ctxTokens} / ${ctxCap} tok`,
+        `${t(lang, '系统提示词', 'system')} ${sysTokens}`,
+        `${t(lang, '对话消息', 'messages')} ${msgTokens}`,
+        `${t(lang, '工具', 'tools')} 0`,
+      ].join('\n')
     : ''
 
   const wsSessions = sessions.filter((s) => (s.workspaceId || 'default') === activeWorkspace)
@@ -588,10 +626,17 @@ export default function App() {
               if (cmd === 'new') createSession()
               if (cmd === 'trace') setPage('trace')
             }}
-            context={{
-              percent: ctxPercent,
-              breakdown: ctxBreakdown,
+            context={{ percent: ctxPercent, lines: ctxBreakdown.split('\n').filter(Boolean) }}
+            settings={settings}
+            onSave={saveSettings}
+            vision={vision}
+            queue={queue}
+            onFlushQueue={() => {
+              const [head, ...rest] = queue
+              setQueue(rest)
+              if (head) send(head.text, head.images, { steer: true })
             }}
+            onDropQueue={() => setQueue([])}
           />
         )}
       </main>

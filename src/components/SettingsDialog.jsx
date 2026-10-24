@@ -74,6 +74,31 @@ export default function SettingsDialog({ settings, onSave, onClose, connected, c
               </>
             )}
 
+            {section === 'general' && (
+              <div className="settings-row" style={{ marginTop: 8 }}>
+                <div>
+                  <div className="settings-label">{t(lang, '繁忙时 Enter 键行为', 'Enter while busy')}</div>
+                  <div className="settings-hint">
+                    {t(lang, '仅在生成中生效；Cmd/Ctrl+Enter 使用另一行为', 'Only while generating; Cmd/Ctrl+Enter uses the other')}
+                  </div>
+                </div>
+                <div className="seg">
+                  <button
+                    className={`seg-btn ${(settings?.enterBehavior || 'queue') === 'queue' ? 'active' : ''}`}
+                    onClick={() => onSave({ enterBehavior: 'queue' })}
+                  >
+                    {t(lang, '排队发送', 'Queue')}
+                  </button>
+                  <button
+                    className={`seg-btn ${settings?.enterBehavior === 'steer' ? 'active' : ''}`}
+                    onClick={() => onSave({ enterBehavior: 'steer' })}
+                  >
+                    {t(lang, '插话发送', 'Steer')}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {section === 'appearance' && (
               <div className="settings-row">
                 <div>
